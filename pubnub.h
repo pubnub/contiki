@@ -24,7 +24,7 @@
     - The only available Pubnub APIs are: publish, subscribe, leave.
 
     - Library itself doesn't handle timeouts other than TCP/IP
-    timeout, which mostly come down to loss of connection to the
+    timeout, which mostly comes down to loss of connection to the
     server. If you want to impose a timeout on transaction duration,
     use one of the several ConTiki OS timer interfaces yourself.
 
@@ -49,8 +49,8 @@
  * generation frequency).
  *
  * Another typical setup may have a single subscription context and
- * create (or maintain a fixed-size pool of) a context for each publish
- * call triggered by an external event (e.g. a button push). 
+ * maintain a pool of contexts for each publish call triggered by an
+ * external event (e.g. a button push).
  *
  * Of course, there is nothing wrong with having just one context, but
  * you can't publish and subscribe at the same time on the same context.
@@ -116,7 +116,10 @@ enum pubnub_res {
     /** Receive buffer (from previous transaction) not read, new
 	subscription not allowed.
     */
-    PNR_RX_BUFF_NOT_EMPTY
+    PNR_RX_BUFF_NOT_EMPTY,
+    /** The buffer is to small. Increase #PUBNUB_BUF_MAXLEN.
+    */
+    PNR_TX_BUFF_TOO_SMALL
 };
 
 
@@ -124,8 +127,9 @@ enum pubnub_res {
     allocated by the Pubnub library and this is the only way to
     get a pointer to one of them.
 
-    @param index The index of the context, in the range 0 - #PUBNUB_CTX_MAX - 1
-    @return Context pointer on success, NULL otherwise
+    @param index The index of the context
+    @pre (index >= 0) && (index < #PUBNUB_CTX_MAX)
+    @return Context pointer on success
  */
 pubnub_t *pubnub_get_ctx(unsigned index);
 
@@ -236,7 +240,7 @@ char const* pubnub_get(pubnub_t *p);
     @see pubnub_subscribe
     @see pubnub_get
  */
-char const *pubnub_get_channel(struct pubnub *pb);
+char const *pubnub_get_channel(pubnub_t *pb);
 
 /** Subscribe to @p channel. This actually means "initiate a subscribe
     transaction". The outcome is sent to the process that starts the

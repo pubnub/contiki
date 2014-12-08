@@ -1,6 +1,6 @@
 /* -*- c-file-style:"stroustrup" -*- */
 #include "pubnub.h"
-#include "contiki.h"
+#include "contiki-net.h"
 
 #include <stdio.h>
 
@@ -25,9 +25,8 @@ PROCESS_THREAD(pubnub_demo, ev, data)
     {
 	uip_ipaddr_t addr;
 	uip_ipaddr(&addr, 127,0,0,1);
-	resolv_conf(addr);
+	resolv_conf(&addr);
     }
-
     
     m_pb = pubnub_get_ctx(0);
     pubnub_init(m_pb, pubkey, subkey);
