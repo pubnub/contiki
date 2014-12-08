@@ -26,7 +26,7 @@ The files of the library repository are:
   with your code
 
 - `pubnubDemo.c` : A simple demo of how the library should be used.
-  Build this (with pubnub.c and Contiki) for a basic example of
+  Build this (with pubnub.c and Contiki) for a basic example of how
   stuff works.
 
 - `pubnub.t.c` : The unit test. It uses the cgreen unit testing library
@@ -102,7 +102,7 @@ This is ilustrated in pubnubDemo.c, similar to this:
 ### Remarks
 
 * We said there are no requirements, because we assume the
-  minimal Contiki OS. But, in fact, we do expect that:
+  minimal Contiki OS. But, in fact, *we do* expect that:
 
 	- you have both UDP and TCP enabled
 	- you have IPv4 enabled
@@ -115,5 +115,5 @@ This is ilustrated in pubnubDemo.c, similar to this:
 * You have to start the `pubnub_process` at some point, preferrably
   before you initiate any transaction.  It does not start
   automatically.  This enables you to start it at your own
-  convinience. The pubnubDemo starts it in `AUTOSTART` list, but
-  you don't have to do it like that.
+  convinience. The pubnubDemo starts it in the `AUTOSTART_PROCESSES`
+  list, but you don't have to do it like that.
