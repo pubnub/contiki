@@ -118,7 +118,9 @@ static void handle_start_connect(pubnub_t *pb)
 		 , ipaddrptr->u8[2]
 		 , ipaddrptr->u8[3]
 	);
+    PROCESS_CONTEXT_BEGIN(&pubnub_process);
     tcp_connect(ipaddrptr, uip_htons(HTTP_PORT), pb);
+    PROCESS_CONTEXT_END(&pubnub_process);
     pb->state = PS_CONNECT;
 }
 
