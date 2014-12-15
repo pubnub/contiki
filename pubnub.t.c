@@ -100,6 +100,35 @@ uint16_t uip_htons(uint16_t val) { return UIP_HTONS(val); }
 
 uint16_t psock_datalen(struct psock *p) { return p->bufsize - p->buf.left; }
 
+int uiplib_ip4addrconv(const char *addrstr, uip_ip4addr_t *ipaddr)
+{
+    unsigned char i;
+    uint8_t charsread = 0;
+    unsigned char tmp = 0;
+    
+    for (i = 0; i < 4; ++i) {
+	char c;
+	unsigned char j = 0;
+	do {
+	    c = *addrstr;
+	    if (++j > 4) {
+		return 0;
+	    }
+	    if (c == '.' || c == 0 || c == ' ') {
+		ipaddr->u8[i] = tmp;
+		tmp = 0;
+	    } else if (c >= '0' && c <= '9') {
+		tmp = (tmp * 10) + (c - '0');
+	    } else {
+		return 0;
+	    }
+	    ++addrstr;
+	    ++charsread;
+	} while (c != '.' && c != 0 && c != ' ');
+    }
+    return charsread-1;
+}
+
 
 /* Like previous functions, these are not (just) mocked, but not copied
    either. They're implemented differently, as per our needs.

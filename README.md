@@ -29,16 +29,16 @@ The files of the library repository are:
   Build this (with pubnub.c and Contiki) for a basic example of how
   stuff works.
 
-- `pubnub.t.c` : The unit test. It uses the cgreen unit testing library
-  and has "total" line coverage (only the lines that _can't_ be
-  executed - sanity checks - are not covered). You can look at it
-  to see various ways to interact with the library, but as most
-  test code, it is not very user-frienrly. You can also build and
-  run it yourself, if you wish.
+- `pubnub.t.c` : The unit test. It uses the cgreen unit testing
+  library and has "total" line coverage (only the lines that _can't_
+  be executed - sanity checks - are not covered). You can look at it
+  to see various ways to interact with the library, but as most test
+  code, it's not very user-friendly. You can also build and run it
+  yourself, if you wish.
 
-- `Makefile` : basic Makefile to build the pubnubDemo "app" and pubnub.t
-  unit test. Use are is, or look for clues on how to make one for
-  yourself.
+- `Makefile` : basic Makefile to build the pubnubDemo "app" and
+  pubnub.t unit test. Use are is, or look for clues on how to make one
+  for yourself.
 
 - `LICENSE` and this `README.md` should be self-explanatory.
   

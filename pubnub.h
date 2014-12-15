@@ -85,7 +85,7 @@
 /** This is the URL of the Pubnub server. Change only for testing
     purposes.
 */
-#define PUBNUB_ORIGIN  "http://pubsub.pubnub.com/"
+#define PUBNUB_ORIGIN  "pubsub.pubnub.com"
 
 struct pubnub;
 

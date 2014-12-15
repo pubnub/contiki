@@ -10,6 +10,13 @@
 #include <stdlib.h>
 
 
+#if VERBOSE_DEBUG
+#define DEBUG_PRINTF(...) printf(__VA_ARGS__)
+#else
+#define DEBUG_PRINTF(...) do { } while(0)
+#endif
+
+
 PROCESS(pubnub_process, "PubNub process");
 
 
@@ -100,10 +107,17 @@ static void handle_start_connect(pubnub_t *pb)
     assert((pb->state == PS_IDLE) || (pb->state == PS_WAIT_DNS));
 
     if (resolv_lookup(PUBNUB_ORIGIN, &ipaddrptr) != RESOLV_STATUS_CACHED) {
+	DEBUG_PRINTF("Pubnub: Querying for %s\n", PUBNUB_ORIGIN);
 	resolv_query(PUBNUB_ORIGIN);
 	pb->state = PS_WAIT_DNS;
 	return;
     }
+    DEBUG_PRINTF("Pubnub: '%s' resolved to: %d.%d.%d.%d\n", PUBNUB_ORIGIN
+		 , ipaddrptr->u8[0]
+		 , ipaddrptr->u8[1]
+		 , ipaddrptr->u8[2]
+		 , ipaddrptr->u8[3]
+	);
     tcp_connect(ipaddrptr, uip_htons(HTTP_PORT), pb);
     pb->state = PS_CONNECT;
 }
@@ -201,6 +215,9 @@ static void trans_outcome(pubnub_t *pb, enum pubnub_res result)
 {
     pb->last_result = result;
 
+    DEBUG_PRINTF("Pubnub: Transaction outcome: %d, HTTP code: %d\n",
+		 result, pb->http_code
+	);
     if ((result == PNR_FORMAT_ERROR) || (PUBNUB_MISSMSG_OK && (result != PNR_OK))) {
 	/* In case of PubNub protocol error, abort an ongoing
 	 * subscribe and start over. This means some messages were
@@ -438,6 +455,9 @@ enum pubnub_res pubnub_leave(pubnub_t *p, const char *channel)
 static void handle_dns_found(char const* name)
 {
     pubnub_t *pb;
+
+    DEBUG_PRINTF("Pubnub: DNS event '%s' - origin: '%s'\n", name, PUBNUB_ORIGIN);
+
     if (0 != strcmp(name, PUBNUB_ORIGIN)) {
 	return;
     }
@@ -461,13 +481,16 @@ PT_THREAD(handle_transaction(pubnub_t *pb))
     pb->http_code = 0;
 
     /* Send HTTP request */
+    DEBUG_PRINTF("Pubnub: Sending HTTP request...\n");
     PSOCK_SEND_LITERAL_STR(&pb->psock, "GET ");
     PSOCK_SEND_STR(&pb->psock, pb->http_buf.url);
     PSOCK_SEND_LITERAL_STR(&pb->psock, " HTTP/1.1\r\nHost: ");
     PSOCK_SEND_STR(&pb->psock, PUBNUB_ORIGIN);
     PSOCK_SEND_LITERAL_STR(&pb->psock, "\r\nUser-Agent: PubNub-ConTiki/0.1\r\nConnection: Keep-Alive\r\n\r\n");
+    DEBUG_PRINTF("Pubnub: Sent.\n");
 
     /* Read HTTP response status line */
+    DEBUG_PRINTF("Pubnub: Reading HTTP response status line...\n");
     PSOCK_READTO(&pb->psock, '\n');
     if (strncmp(pb->http_buf.line, "HTTP/1.", 7) != 0) {
 	trans_outcome(pb, PNR_IO_ERROR);
@@ -478,6 +501,7 @@ PT_THREAD(handle_transaction(pubnub_t *pb))
     /* Read response header to find out either the length of the body
        or that body is chunked.
     */
+    DEBUG_PRINTF("Pubnub: Reading HTTP response header...\n");
     pb->http_content_len = 0;
     pb->http_chunked = false;
     while (PSOCK_DATALEN(&pb->psock) > 2) {
@@ -497,8 +521,10 @@ PT_THREAD(handle_transaction(pubnub_t *pb))
     }
 
     /* Read the body - either at once, or chunk by chunk */
+    DEBUG_PRINTF("Pubnub: Reading HTTP response body...");
     pb->http_buf_len = 0;
     if (pb->http_chunked) {
+	DEBUG_PRINTF("...chunked\n");
 	for (;;) {
 	    PSOCK_READTO(&pb->psock, '\n');
 	    pb->http_content_len = strtoul(pb->http_buf.line, NULL, 16);
@@ -523,6 +549,7 @@ PT_THREAD(handle_transaction(pubnub_t *pb))
 	}
     }
     else {
+	DEBUG_PRINTF("...regular\n");
 	while (pb->http_buf_len < pb->http_content_len) {
 	    PSOCK_READBUF_LEN(&pb->psock, pb->http_content_len - pb->http_buf_len);
 	    memcpy(
@@ -536,6 +563,7 @@ PT_THREAD(handle_transaction(pubnub_t *pb))
     pb->http_reply[pb->http_buf_len] = '\0';
 
     /* Notify the initiator that we're done */
+    DEBUG_PRINTF("Pubnub: done reading HTTP response\n");
     if (PBTT_SUBSCRIBE == pb->trans) {
 	if (parse_subscribe_response(pb) != 0) {
 	    trans_outcome(pb, PNR_FORMAT_ERROR);
@@ -591,6 +619,7 @@ PROCESS_THREAD(pubnub_process, ev, data)
 {
     PROCESS_BEGIN();
 
+    DEBUG_PRINTF("Pubnub: process started...\n");
     pubnub_publish_event = process_alloc_event();
     pubnub_subscribe_event = process_alloc_event();
     pubnub_leave_event = process_alloc_event();

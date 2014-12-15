@@ -24,7 +24,7 @@ PROCESS_THREAD(pubnub_demo, ev, data)
     /* Could try DHCP, but for now configure by hand... */
     {
 	uip_ipaddr_t addr;
-	uip_ipaddr(&addr, 127,0,0,1);
+	uip_ipaddr(&addr, 208,67,222,222);
 	resolv_conf(&addr);
     }
     
@@ -36,20 +36,21 @@ PROCESS_THREAD(pubnub_demo, ev, data)
     while (1) {
 	PROCESS_WAIT_EVENT();
 	if (ev == PROCESS_EVENT_TIMER) {
+	    printf("pubnubDemo: Timer\n");
 	    pubnub_publish(m_pb, channel, "\"ConTiki Pubnub voyager\"");
 	}
 	else if (ev == pubnub_publish_event) {
-	    printf("Publish event\n");
+	    printf("pubnubDemo: Publish event\n");
 	    pubnub_subscribe(m_pb, channel);
 	}
 	else if (ev == pubnub_subscribe_event) {
-	    printf("Subscribe event\n");
+	    printf("pubnubDemo: Subscribe event\n");
 	    for (;;) {
 		char const *msg = pubnub_get(m_pb);
 		if (NULL == msg) {
 		    break;
 		}
-		printf("Received message: %s\n", msg);
+		printf("pubnubDemo: Received message: %s\n", msg);
 	    }
 	    etimer_restart(&et);
 	}
