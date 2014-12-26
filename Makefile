@@ -7,7 +7,7 @@ all: test $(CONTIKI_PROJECT)
 TARGET = minimal-net
 CONTIKI = ./contiki-2.7
 include $(CONTIKI)/Makefile.include
-CFLAGS += -D VERBOSE_DEBUG
+CFLAGS += -D VERBOSE_DEBUG -D PUBNUB_USE_MDNS=0
 
 test: pubnub.c pubnub.h pubnub.t.c
 	gcc -o pubnub.t.so -shared $(CFLAGS) -Wall -fprofile-arcs -ftest-coverage -fPIC pubnub.c pubnub.t.c -lcgreen -lm

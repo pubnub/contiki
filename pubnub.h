@@ -35,6 +35,8 @@
 
 /** @file pubnub.h */
 
+/* -- Next few definitions can be tweaked by the user, but with care -- */
+
 /** Maximum number of PubNub contexts.
  * A context is used to publish messages or subscribe (get) them.
  *
@@ -81,11 +83,21 @@
  * PUBNUB_REPLY_MAXLEN overrun issue */
 #define PUBNUB_MISSMSG_OK 1
 
-
 /** This is the URL of the Pubnub server. Change only for testing
     purposes.
 */
 #define PUBNUB_ORIGIN  "pubsub.pubnub.com"
+
+#if !defined PUBNUB_USE_MDNS
+/** If `1`, the MDNS module will be used to handle the DNS
+	resolving. If `0` the "resolv" module will be used.
+	This is a temporary solution, it is expected that ConTiki
+	will unify those two modules.
+*/
+#define PUBNUB_USE_MDNS 1
+#endif
+
+/* -- You should not change anything below this line -- */
 
 struct pubnub;
 

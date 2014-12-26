@@ -44,6 +44,8 @@ process_event_t tcpip_event = TCPIP_EVENT;
 */
 uint8_t uip_flags;
 
+struct uip_conn *uip_conn;
+
 struct process *process_current;
 
 
@@ -130,7 +132,7 @@ int uiplib_ip4addrconv(const char *addrstr, uip_ip4addr_t *ipaddr)
 }
 
 
-/* Like previous functions, these are not (just) mocked, but not copied
+/* These functions are also not (just) mocked, but not copied
    either. They're implemented differently, as per our needs.
 */
 
@@ -138,6 +140,11 @@ process_event_t process_alloc_event(void)
 {
     static process_event_t lastevent = MAX_STATIC_EVENT_ALLOC;
     return lastevent++;
+}
+
+
+void tcp_attach(struct uip_conn *conn, void *appstate)
+{
 }
 
 
@@ -238,6 +245,16 @@ inline void incoming(char const*str) {
     attest(pubnub_process.thread(&pubnub_process.pt, TCPIP_EVENT, pbp), equals(PT_YIELDED));
 }
 
+inline void close_incoming() {
+    uip_flags = UIP_CLOSE;
+    attest(pubnub_process.thread(&pubnub_process.pt, TCPIP_EVENT, pbp), equals(PT_YIELDED));
+}
+
+inline void incoming_and_close(char const *str) {
+    incoming(str);
+    close_incoming();
+}
+
 
 void expect_cached_dns_for_pubnub_origin()
 {
@@ -278,7 +295,7 @@ Ensure(single_context_pubnub, leave_cached_dns) {
     uip_flags = UIP_CONNECTED;
     expect_outgoing_with_url("/v2/presence/sub-key/subkey/channel/lamanche/leave?");
     expect_event(pubnub_leave_event);
-    incoming("HTTP/1.1 200\r\nContent-Length: 2\r\n\r\n[]");
+    incoming_and_close("HTTP/1.1 200\r\nContent-Length: 2\r\n\r\n[]");
 
     attest(readbuf_left(), equals(0));
     attest(pubnub_last_result(pbp), equals(PNR_OK));
@@ -300,7 +317,7 @@ Ensure(single_context_pubnub, leave_query_dns) {
     uip_flags = UIP_CONNECTED;
     expect_outgoing_with_url("/v2/presence/sub-key/subskey/channel/dunav-tisa-dunav/leave?");
     expect_event(pubnub_leave_event);
-    incoming("HTTP/1.1 200\r\nContent-Length: 2\r\n\r\n[]");
+    incoming_and_close("HTTP/1.1 200\r\nContent-Length: 2\r\n\r\n[]");
 
     attest(readbuf_left(), equals(0));
     attest(pubnub_last_result(pbp), equals(PNR_OK));
@@ -320,7 +337,7 @@ Ensure(single_context_pubnub, leave_cached_dns_uuid_auth) {
     uip_flags = UIP_CONNECTED;
     expect_outgoing_with_url("/v2/presence/sub-key/subkey/channel/lamanche/leave?uuid=BABA-DEDA-DECA");
     expect_event(pubnub_leave_event);
-    incoming("HTTP/1.1 200\r\nContent-Length: 2\r\n\r\n[]");
+    incoming_and_close("HTTP/1.1 200\r\nContent-Length: 2\r\n\r\n[]");
 
     attest(readbuf_left(), equals(0));
     attest(pubnub_last_result(pbp), equals(PNR_OK));
@@ -335,7 +352,7 @@ Ensure(single_context_pubnub, leave_cached_dns_uuid_auth) {
     uip_flags = UIP_CONNECTED;
     expect_outgoing_with_url("/v2/presence/sub-key/subkey/channel/lamanche/leave?uuid=BABA-DEDA-DECA&auth=super-secret-key");
     expect_event(pubnub_leave_event);
-    incoming("HTTP/1.1 200\r\nContent-Length: 2\r\n\r\n[]");
+    incoming_and_close("HTTP/1.1 200\r\nContent-Length: 2\r\n\r\n[]");
 
     attest(readbuf_left(), equals(0));
     attest(pubnub_last_result(pbp), equals(PNR_OK));
@@ -350,7 +367,7 @@ Ensure(single_context_pubnub, leave_cached_dns_uuid_auth) {
     uip_flags = UIP_CONNECTED;
     expect_outgoing_with_url("/v2/presence/sub-key/subkey/channel/lamanche/leave?auth=super-secret-key");
     expect_event(pubnub_leave_event);
-    incoming("HTTP/1.1 200\r\nContent-Length: 2\r\n\r\n[]");
+    incoming_and_close("HTTP/1.1 200\r\nContent-Length: 2\r\n\r\n[]");
 
     attest(readbuf_left(), equals(0));
     attest(pubnub_last_result(pbp), equals(PNR_OK));
@@ -366,7 +383,7 @@ Ensure(single_context_pubnub, leave_cached_dns_uuid_auth) {
     expect_outgoing_with_url("/v2/presence/sub-key/subkey/channel/lamanche/leave?");
 
     expect_event(pubnub_leave_event);
-    incoming("HTTP/1.1 200\r\nContent-Length: 2\r\n\r\n[]");
+    incoming_and_close("HTTP/1.1 200\r\nContent-Length: 2\r\n\r\n[]");
 
     attest(readbuf_left(), equals(0));
     attest(pubnub_last_result(pbp), equals(PNR_OK));
@@ -410,7 +427,7 @@ Ensure(single_context_pubnub, publish_cached_dns) {
     uip_flags = UIP_CONNECTED;
     expect_outgoing_with_url("/publish/publkey/subkey/0/jarak/0/%22zec%22");
     expect_event(pubnub_publish_event);
-    incoming("HTTP/1.1 200\r\nContent-Length: 30\r\n\r\n[1,\"Sent\",\"14178940800777403\"]");
+    incoming_and_close("HTTP/1.1 200\r\nContent-Length: 30\r\n\r\n[1,\"Sent\",\"14178940800777403\"]");
 
     attest(readbuf_left(), equals(0));
     attest(pubnub_last_result(pbp), equals(PNR_OK));
@@ -457,7 +474,7 @@ Ensure(single_context_pubnub, subscribe_cached_dns) {
     uip_flags = UIP_CONNECTED;
     expect_outgoing_with_url("/subscribe/timok/morava/0/0?&pnsdk=PubNub-Contiki-%2F1.1");
     expect_event(pubnub_subscribe_event);
-    incoming("HTTP/1.1 200\r\nContent-Length: 33\r\n\r\n[[\"Hi\",\"Fi\"],\"14179836755957292\"]");
+    incoming_and_close("HTTP/1.1 200\r\nContent-Length: 33\r\n\r\n[[\"Hi\",\"Fi\"],\"14179836755957292\"]");
 
     attest(readbuf_left(), equals(0));
     attest(pubnub_last_result(pbp), equals(PNR_OK));
@@ -475,7 +492,7 @@ Ensure(single_context_pubnub, subscribe_cached_dns) {
     expect_outgoing_with_url("/subscribe/timok/morava,lim/0/14179836755957292?&pnsdk=PubNub-Contiki-%2F1.1");
 
     expect_event(pubnub_subscribe_event);
-    incoming("HTTP/1.1 200\r\nContent-Length: 59\r\n\r\n[[{\"Wi\"},[\"Xa\"],\"Qi\"],\"14179857817724547\",\"lim,morava,lim\"]");
+    incoming_and_close("HTTP/1.1 200\r\nContent-Length: 59\r\n\r\n[[{\"Wi\"},[\"Xa\"],\"Qi\"],\"14179857817724547\",\"lim,morava,lim\"]");
 
     attest(readbuf_left(), equals(0));
     attest(pubnub_last_result(pbp), equals(PNR_OK));
@@ -502,7 +519,7 @@ Ensure(single_context_pubnub, subscribe_cached_dns_chunked) {
 
     incoming("HTTP/1.1 200\r\nTransfer-Encoding: chunked\r\n\r\n0d\r\n[[1234,\"Da\"],\r\n");
     expect_event(pubnub_subscribe_event);
-    incoming("14\r\n\"14179915548467106\"]\r\n0\r\n");
+    incoming_and_close("14\r\n\"14179915548467106\"]\r\n0\r\n");
 
     attest(readbuf_left(), equals(0));
     attest(pubnub_last_result(pbp), equals(PNR_OK));
@@ -519,7 +536,7 @@ Ensure(single_context_pubnub, subscribe_cached_dns_chunked) {
     uip_flags = UIP_CONNECTED;
     expect_outgoing_with_url("/subscribe/timok/ravanica/0/14179915548467106?&pnsdk=PubNub-Contiki-%2F1.1");
     expect_event(pubnub_subscribe_event);
-    incoming("HTTP/1.1 200\r\nContent-Length: 33\r\n\r\n[[\"Yo\",1098],\"14179916751973238\"]");
+    incoming_and_close("HTTP/1.1 200\r\nContent-Length: 33\r\n\r\n[[\"Yo\",1098],\"14179916751973238\"]");
 
     attest(readbuf_left(), equals(0));
     attest(pubnub_last_result(pbp), equals(PNR_OK));
@@ -543,7 +560,7 @@ Ensure(single_context_pubnub, subscribed_cached_dns_uuid_auth) {
     uip_flags = UIP_CONNECTED;
     expect_outgoing_with_url("/subscribe/timok/boka/0/0?uuid=CECA-CACA-DACA&pnsdk=PubNub-Contiki-%2F1.1");
     expect_event(pubnub_subscribe_event);
-    incoming("HTTP/1.1 200\r\nContent-Length: 8\r\n\r\n[[],\"0\"]");
+    incoming_and_close("HTTP/1.1 200\r\nContent-Length: 8\r\n\r\n[[],\"0\"]");
     attest(readbuf_left(), equals(0));
     attest(pubnub_last_result(pbp), equals(PNR_OK));
     attest(pubnub_last_http_code(pbp), equals(200));
@@ -557,7 +574,7 @@ Ensure(single_context_pubnub, subscribed_cached_dns_uuid_auth) {
     uip_flags = UIP_CONNECTED;
     expect_outgoing_with_url("/subscribe/timok/kotor/0/0?uuid=CECA-CACA-DACA&auth=public-key&pnsdk=PubNub-Contiki-%2F1.1");
     expect_event(pubnub_subscribe_event);
-    incoming("HTTP/1.1 200\r\nContent-Length: 8\r\n\r\n[[],\"0\"]");
+    incoming_and_close("HTTP/1.1 200\r\nContent-Length: 8\r\n\r\n[[],\"0\"]");
     attest(readbuf_left(), equals(0));
     attest(pubnub_last_result(pbp), equals(PNR_OK));
     attest(pubnub_last_http_code(pbp), equals(200));
@@ -571,7 +588,7 @@ Ensure(single_context_pubnub, subscribed_cached_dns_uuid_auth) {
     uip_flags = UIP_CONNECTED;
     expect_outgoing_with_url("/subscribe/timok/sava/0/0?auth=public-key&pnsdk=PubNub-Contiki-%2F1.1");
     expect_event(pubnub_subscribe_event);
-    incoming("HTTP/1.1 200\r\nContent-Length: 8\r\n\r\n[[],\"0\"]");
+    incoming_and_close("HTTP/1.1 200\r\nContent-Length: 8\r\n\r\n[[],\"0\"]");
     attest(readbuf_left(), equals(0));
     attest(pubnub_last_result(pbp), equals(PNR_OK));
     attest(pubnub_last_http_code(pbp), equals(200));
@@ -585,7 +602,7 @@ Ensure(single_context_pubnub, subscribed_cached_dns_uuid_auth) {
     uip_flags = UIP_CONNECTED;
     expect_outgoing_with_url("/subscribe/timok/k/0/0?&pnsdk=PubNub-Contiki-%2F1.1");
     expect_event(pubnub_subscribe_event);
-    incoming("HTTP/1.1 200\r\nContent-Length: 8\r\n\r\n[[],\"0\"]");
+    incoming_and_close("HTTP/1.1 200\r\nContent-Length: 8\r\n\r\n[[],\"0\"]");
     attest(readbuf_left(), equals(0));
     attest(pubnub_last_result(pbp), equals(PNR_OK));
     attest(pubnub_last_http_code(pbp), equals(200));
@@ -617,7 +634,7 @@ Ensure(single_context_pubnub, subscribe_bad_responses) {
     uip_flags = UIP_CONNECTED;
     expect_outgoing_with_url("/subscribe/timok/morava/0/0?&pnsdk=PubNub-Contiki-%2F1.1");
     expect_event(pubnub_subscribe_event);
-    incoming("HTTP/0.9 200\r\nContent-Length: 33\r\n\r\n[[\"Hi\",\"Fi\"],\"14179836755957292\"]");
+    incoming_and_close("HTTP/0.9 200\r\nContent-Length: 33\r\n\r\n[[\"Hi\",\"Fi\"],\"14179836755957292\"]");
 
     attest(pubnub_last_result(pbp), equals(PNR_IO_ERROR));
     attest(pubnub_get(pbp), equals(NULL));
@@ -630,7 +647,7 @@ Ensure(single_context_pubnub, subscribe_bad_responses) {
     uip_flags = UIP_CONNECTED;
     expect_outgoing_with_url("/subscribe/timok/morava/0/0?&pnsdk=PubNub-Contiki-%2F1.1");
     expect_event(pubnub_subscribe_event);
-    incoming("HTTP/1.1 200\r\nContent-Length: 3333\r\n\r\n");
+    incoming_and_close("HTTP/1.1 200\r\nContent-Length: 3333\r\n\r\n");
 
     attest(pubnub_last_result(pbp), equals(PNR_IO_ERROR));
     attest(pubnub_get(pbp), equals(NULL));
@@ -643,7 +660,7 @@ Ensure(single_context_pubnub, subscribe_bad_responses) {
     uip_flags = UIP_CONNECTED;
     expect_outgoing_with_url("/subscribe/timok/morava/0/0?&pnsdk=PubNub-Contiki-%2F1.1");
     expect_event(pubnub_subscribe_event);
-    incoming("HTTP/1.1 200\r\nTransfer-Encoding: chunked\r\n\r\nFFFF\r\n");
+    incoming_and_close("HTTP/1.1 200\r\nTransfer-Encoding: chunked\r\n\r\nFFFF\r\n");
 
     attest(pubnub_last_result(pbp), equals(PNR_IO_ERROR));
     attest(pubnub_get(pbp), equals(NULL));
@@ -657,7 +674,7 @@ Ensure(single_context_pubnub, subscribe_bad_responses) {
     expect_outgoing_with_url("/subscribe/timok/morava/0/0?&pnsdk=PubNub-Contiki-%2F1.1");
     expect_event(pubnub_subscribe_event);
 
-    incoming("HTTP/1.1 200\r\nTransfer-Encoding: chunked\r\n\r\nF0\r\n0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\r\nF0\r\n0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\r\nF0\r\n");
+    incoming_and_close("HTTP/1.1 200\r\nTransfer-Encoding: chunked\r\n\r\nF0\r\n0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\r\nF0\r\n0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\r\nF0\r\n");
 
     attest(pubnub_last_result(pbp), equals(PNR_IO_ERROR));
     attest(pubnub_get(pbp), equals(NULL));
@@ -674,7 +691,7 @@ Ensure(single_context_pubnub, subscribe_bad_response_content) {
     uip_flags = UIP_CONNECTED; \
     expect_outgoing_with_url("/subscribe/timok/morava/0/0?&pnsdk=PubNub-Contiki-%2F1.1"); \
     expect_event(pubnub_subscribe_event); \
-    incoming("HTTP/1.0 200\r\nContent-Length: " incoming_); \
+    incoming_and_close("HTTP/1.0 200\r\nContent-Length: " incoming_); \
     attest(pubnub_last_result(pbp), equals(PNR_FORMAT_ERROR)); \
     attest(pubnub_get(pbp), equals(NULL)); \
     attest(pubnub_get_channel(pbp), equals(NULL)); \
