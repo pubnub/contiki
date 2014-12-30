@@ -87,7 +87,7 @@ struct pubnub {
     unsigned http_buf_len;
     unsigned http_content_len;
     bool http_chunked;
-    char http_reply[PUBNUB_REPLY_MAXLEN];
+    char http_reply[PUBNUB_REPLY_MAXLEN+1];
 
     /* These in-string offsets are used for yielding messages received
      * by subscribe - the beginning of last yielded message and total
@@ -145,7 +145,7 @@ static void handle_start_connect(pubnub_t *pb)
 static int find_string_start(char const *buf, int len)
 {
     int i;
-    for (i = len-1; i > 0; i--) {
+    for (i = len-1; i > 0; --i) {
         if (buf[i] == '"') {
             return (buf[i-1] == ',') ? i : -1;
 	}
@@ -316,6 +316,9 @@ static int parse_subscribe_response(pubnub_t *p)
 {
     char *reply = p->http_reply;
     int replylen = strlen(reply);
+    if (replylen < 2) {
+	return -1;
+    }
     if (reply[replylen-1] != ']' && replylen > 2) {
         replylen -= 2; // XXX: this seems required by Manxiang
     }
@@ -335,9 +338,7 @@ static int parse_subscribe_response(pubnub_t *p)
         int k;
         /* It is a channel list, there is another string argument in front
          * of us. Process the channel list ... */
-        p->chan_ofs = i+1;
-        p->chan_end = replylen - 1;
-        for (k = p->chan_end - 1; k > p->chan_ofs; --k) {
+        for (k = replylen - 2; k > i+1; --k) {
             if (reply[k] == ',') {
                 reply[k] = 0;
 	    }
@@ -345,10 +346,14 @@ static int parse_subscribe_response(pubnub_t *p)
 
         /* ... and look for timetoken again. */
 	reply[i-2] = 0;
+        p->chan_ofs = i+1;
         i = find_string_start(reply, i-2);
         if (i < 0) {
+	    p->chan_ofs = 0;
+	    p->chan_end = 0;
             return -1;
         }
+        p->chan_end = replylen - 1;
     } 
     else {
         p->chan_ofs = 0;

@@ -150,9 +150,13 @@ void tcp_attach(struct uip_conn *conn, void *appstate)
 
 static uint8_t *m_readbuf;
 static size_t m_readbuf_size;
+static size_t m_readbuf_capacity;
 static uint8_t *m_readbuf_pos;
 inline size_t readbuf_left() {
     return m_readbuf_size ? m_readbuf_size - (m_readbuf_pos - m_readbuf) : 0;
+}
+inline void readbuf_discard() {
+    m_readbuf_pos = m_readbuf + m_readbuf_size;
 }
 
 PT_THREAD(psock_readto(struct psock *psock, unsigned char c))
@@ -177,11 +181,16 @@ PT_THREAD(psock_readto(struct psock *psock, unsigned char c))
 
 PT_THREAD(psock_readbuf_len(struct psock *psock, uint16_t len))
 {
-    attest(len, is_less_than(psock->bufsize));
     if (readbuf_left() >= len) {
 	memcpy(psock->bufptr, m_readbuf_pos, len);
 	m_readbuf_pos += len;
 	psock->buf.left = psock->bufsize - len;
+	return PT_ENDED;
+    }
+    else if (readbuf_left() >= psock->bufsize) {
+	memcpy(psock->bufptr, m_readbuf_pos, psock->bufsize);
+	m_readbuf_pos += psock->bufsize;
+	psock->buf.left = 0;
 	return PT_ENDED;
     }
     return PT_YIELDED;
@@ -224,6 +233,9 @@ static uip_ipaddr_t pubnub_ip_addr;
 static uip_ipaddr_t* pubnub_ip_addr_ptr = &pubnub_ip_addr;
 
 BeforeEach(single_context_pubnub) {
+    m_readbuf_capacity = 3*PUBNUB_BUF_MAXLEN + 1;
+    m_readbuf = malloc(m_readbuf_capacity);
+    attest(m_readbuf, differs(NULL));
     pbp = pubnub_get_ctx(0);
     attest(pbp, differs(NULL));
 
@@ -236,13 +248,32 @@ BeforeEach(single_context_pubnub) {
 AfterEach(single_context_pubnub) {
     pubnub_done(pbp);
     attest(pubnub_process.thread(&pubnub_process.pt, PROCESS_EVENT_EXIT, NULL), equals(PT_ENDED));
+    if (m_readbuf != NULL) {
+	free(m_readbuf);
+    }
 }
 
 
-inline void incoming(char const*str) {
-    m_readbuf = m_readbuf_pos = (uint8_t*)str;
-    m_readbuf_size = strlen(str);
-    attest(pubnub_process.thread(&pubnub_process.pt, TCPIP_EVENT, pbp), equals(PT_YIELDED));
+void incoming(char const*str)
+{
+    attest(m_readbuf, differs(NULL));
+    attest(str, differs(NULL));
+
+    uint8_t *readbuf_ins_pt = m_readbuf;
+    if (readbuf_left() > 0) {
+	memmove(m_readbuf, m_readbuf + m_readbuf_size - readbuf_left(), readbuf_left());
+	readbuf_ins_pt += readbuf_left();
+    }
+
+    if (strlen(str) + readbuf_left() < m_readbuf_capacity) {
+	memcpy(readbuf_ins_pt, str, strlen(str) + 1);
+	m_readbuf_size = strlen((char*)m_readbuf);
+	m_readbuf_pos = m_readbuf;
+	attest(pubnub_process.thread(&pubnub_process.pt, TCPIP_EVENT, pbp), equals(PT_YIELDED));
+    }
+    else {
+	fail_test("no space in read buffer");
+    }
 }
 
 inline void close_incoming() {
@@ -458,7 +489,7 @@ Ensure(single_context_pubnub, publish_cached_dns_too_long_message) {
     msg[sizeof msg - 1] = '\0';
     attest(pubnub_publish(pbp, "w", msg), equals(PNR_TX_BUFF_TOO_SMALL));
 
-    // URL encoded char
+    /* URL encoded char */
     memset(msg, '"', sizeof msg);
     msg[sizeof msg - 1] = '\0';
     attest(pubnub_publish(pbp, "w", msg), equals(PNR_TX_BUFF_TOO_SMALL));
@@ -624,6 +655,82 @@ Ensure(single_context_pubnub, subscribe_while_busy_fails) {
 }
 
 
+Ensure(single_context_pubnub, subscribe_corner_cases) {
+    pubnub_init(pbp, "publkey", "timok");
+
+    /* Smallest regular response */
+    expect_cached_dns_for_pubnub_origin();
+    attest(pubnub_subscribe(pbp, "morava"), equals(PNR_STARTED));
+
+    uip_flags = UIP_CONNECTED;
+    expect_outgoing_with_url("/subscribe/timok/morava/0/0?&pnsdk=PubNub-Contiki-%2F1.1");
+    expect_event(pubnub_subscribe_event);
+    incoming_and_close("HTTP/1.1 200\r\nContent-Length: 9\r\n\r\n[[0],\"0\"]");
+
+    attest(readbuf_left(), equals(0));
+    attest(pubnub_last_result(pbp), equals(PNR_OK));
+    attest(pubnub_last_http_code(pbp), equals(200));
+    attest(pubnub_get(pbp), streqs("0"));
+    attest(pubnub_get(pbp), equals(NULL));
+    attest(pubnub_get_channel(pbp), equals(NULL));
+
+    /* Largest regular response */
+    expect_cached_dns_for_pubnub_origin();
+    attest(pubnub_subscribe(pbp, "morava"), equals(PNR_STARTED));
+
+    uip_flags = UIP_CONNECTED;
+    expect_outgoing_with_url("/subscribe/timok/morava/0/0?&pnsdk=PubNub-Contiki-%2F1.1");
+    expect_event(pubnub_subscribe_event);
+
+    incoming("HTTP/1.1 200\r\nContent-Length: ");
+#define PRELUDE "\r\n\r\n[[\""
+#define INTERLUDE "\"],\"0\"]"
+#define PACKETS 4
+#define MAX_USEFUL (PUBNUB_REPLY_MAXLEN + 6 - sizeof PRELUDE -sizeof INTERLUDE)
+
+    char *s = malloc(MAX_USEFUL + 1);
+    attest(s, differs(NULL));
+    snprintf(s, MAX_USEFUL, "%d", PUBNUB_REPLY_MAXLEN);
+    incoming(s);
+    incoming(PRELUDE);
+    size_t size_so_far = 0;
+    int i;
+    for (i = 0; i < PACKETS; ++i) {
+	memset(s, 'X', MAX_USEFUL / PACKETS);
+	s[MAX_USEFUL / PACKETS] = '\0';
+	size_so_far += MAX_USEFUL / PACKETS;
+	incoming(s);
+    }
+    if (size_so_far < MAX_USEFUL) {
+	memset(s, 'X', MAX_USEFUL - size_so_far);
+	s[MAX_USEFUL - size_so_far] = '\0';
+	incoming(s);
+    }
+    free(s);
+    incoming_and_close(INTERLUDE);
+
+    attest(readbuf_left(), equals(0));
+    attest(pubnub_last_result(pbp), equals(PNR_OK));
+    attest(pubnub_last_http_code(pbp), equals(200));
+
+    s = malloc(MAX_USEFUL+2 + 1);
+    attest(s, differs(NULL));
+    s[0] = '"';
+    s[MAX_USEFUL+1] = '"';
+    s[MAX_USEFUL+2] = '\0';
+    memset(s+1, 'X', MAX_USEFUL);
+    attest(pubnub_get(pbp), streqs(s));
+    free(s);
+
+    attest(pubnub_get(pbp), equals(NULL));
+    attest(pubnub_get_channel(pbp), equals(NULL));
+
+#undef PRELUDE
+#undef INTERLUDE
+#undef PACKETS
+#undef MAX_USEFUL
+}
+
 Ensure(single_context_pubnub, subscribe_bad_responses) {
     pubnub_init(pbp, "publkey", "timok");
 
@@ -639,6 +746,7 @@ Ensure(single_context_pubnub, subscribe_bad_responses) {
     attest(pubnub_last_result(pbp), equals(PNR_IO_ERROR));
     attest(pubnub_get(pbp), equals(NULL));
     attest(pubnub_get_channel(pbp), equals(NULL));
+    readbuf_discard();
 
     /* Response body too long */
     expect_cached_dns_for_pubnub_origin();
@@ -652,6 +760,7 @@ Ensure(single_context_pubnub, subscribe_bad_responses) {
     attest(pubnub_last_result(pbp), equals(PNR_IO_ERROR));
     attest(pubnub_get(pbp), equals(NULL));
     attest(pubnub_get_channel(pbp), equals(NULL));
+    readbuf_discard();
 
     /* Response chunk too long */
     expect_cached_dns_for_pubnub_origin();
@@ -662,6 +771,7 @@ Ensure(single_context_pubnub, subscribe_bad_responses) {
     expect_event(pubnub_subscribe_event);
     incoming_and_close("HTTP/1.1 200\r\nTransfer-Encoding: chunked\r\n\r\nFFFF\r\n");
 
+    attest(readbuf_left(), equals(0));
     attest(pubnub_last_result(pbp), equals(PNR_IO_ERROR));
     attest(pubnub_get(pbp), equals(NULL));
     attest(pubnub_get_channel(pbp), equals(NULL));
@@ -710,13 +820,48 @@ Ensure(single_context_pubnub, subscribe_bad_response_content) {
     test_("33\r\n\r\n[[SHix,AFif],114179836755957292\"]");
 
     /* Too big time-token */
-    test_("33\r\n\r\n[[1098,7654],\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdefX\"]");
+    test_("81\r\n\r\n[[1098,7654],\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdefX\"]");
 
     /* No string begging for the "second from the right" in the message */
-    test_("31\r\n\r\n[[123,456],114179836755957292\",\"ch\"]");
+    test_("36\r\n\r\n[[123,456],114179836755957292\",\"ch\"]");
+
+    /* Message empty  */
+    test_("0\r\n\r\n");
 
     /* Too short message (just one character) */
     test_("1\r\n\r\nB");
+    test_("1\r\n\r\n[");
+    test_("1\r\n\r\n]");
+
+    /* Too short message (just two characters) */
+    test_("2\r\n\r\nBe");
+    test_("2\r\n\r\n[,");
+    test_("2\r\n\r\n,]");
+    test_("2\r\n\r\n,\"");
+    test_("2\r\n\r\n\"]");
+
+    /* Too short message (just three characters) */
+    test_("3\r\n\r\nBee");
+    test_("3\r\n\r\n[,]");
+    test_("3\r\n\r\n[,\"");
+    test_("3\r\n\r\n,\"]");
+    test_("3\r\n\r\n[\"]");
+
+    /* Too short message (just four characters) */
+    test_("4\r\n\r\nBeee");
+    test_("4\r\n\r\n[,\"]");
+    test_("4\r\n\r\n[,\"\"");
+    test_("4\r\n\r\n[\",]");
+    test_("4\r\n\r\n\",\"]");
+
+    /* Too short message (just five characters) */
+    test_("5\r\n\r\nBeeBe");
+    test_("5\r\n\r\n[,\"\"]");
+    test_("5\r\n\r\n[\",\"]");
+    test_("5\r\n\r\n[\"\",]");
+    test_("5\r\n\r\n[,,\"]");
+    test_("5\r\n\r\n[,\",]");
+    test_("5\r\n\r\n[\",,]");
 
 #undef test_
 }
@@ -825,3 +970,6 @@ Ensure(single_context_pubnub, tcp_closed) {
     attest(pubnub_get(pbp), equals(NULL));
     attest(pubnub_get_channel(pbp), equals(NULL));
 }
+
+
+
