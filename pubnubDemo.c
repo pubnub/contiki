@@ -38,6 +38,25 @@ AUTOSTART_PROCESSES(&pubnub_demo, &pubnub_process);
 struct pubnub *m_pb;
 
 
+/** Helper function to translate Pubnub result to a string */
+static char const* pubnub_res_2_string(enum pubnub_res e)
+{
+    switch (e) {
+    case PNR_OK: return "OK";
+    case PNR_TIMEOUT: return "Timeout";
+    case PNR_IO_ERROR: return "I/O (communication) error";
+    case PNR_HTTP_ERROR: return "HTTP error received from server";
+    case PNR_FORMAT_ERROR: return "Response format error";
+    case PNR_CANCELLED: return "Pubnub API transaction cancelled";
+    case PNR_STARTED: return "Pubnub API transaction started";
+    case PNR_IN_PROGRESS: return "Pubnub API transaction already in progress";
+    case PNR_RX_BUFF_NOT_EMPTY: return "Rx buffer not empty";
+    case PNR_TX_BUFF_TOO_SMALL:  return "Tx buffer too small for sending/publishing the message";
+    default: return "!?!?!";
+    }
+}
+
+
 PROCESS_THREAD(pubnub_demo, ev, data)
 {
     static struct etimer et;
@@ -61,11 +80,11 @@ PROCESS_THREAD(pubnub_demo, ev, data)
 	    pubnub_publish(m_pb, channel, "\"ConTiki Pubnub voyager\"");
 	}
 	else if (ev == pubnub_publish_event) {
-	    printf("pubnubDemo: Publish event\n");
+	    printf("pubnubDemo: Publish event: %s\n", pubnub_res_2_string(pubnub_last_result(m_pb)));
 	    pubnub_subscribe(m_pb, channel);
 	}
 	else if (ev == pubnub_subscribe_event) {
-	    printf("pubnubDemo: Subscribe event\n");
+	    printf("pubnubDemo: Subscribe event: %s\n", pubnub_res_2_string(pubnub_last_result(m_pb)));
 	    for (;;) {
 		char const *msg = pubnub_get(m_pb);
 		if (NULL == msg) {

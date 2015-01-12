@@ -731,6 +731,7 @@ Ensure(single_context_pubnub, subscribe_corner_cases) {
 #undef MAX_USEFUL
 }
 
+
 Ensure(single_context_pubnub, subscribe_bad_responses) {
     pubnub_init(pbp, "publkey", "timok");
 
@@ -970,6 +971,3 @@ Ensure(single_context_pubnub, tcp_closed) {
     attest(pubnub_get(pbp), equals(NULL));
     attest(pubnub_get_channel(pbp), equals(NULL));
 }
-
-
-
