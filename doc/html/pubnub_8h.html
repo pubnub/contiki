@@ -97,8 +97,6 @@ var searchBox = new SearchBox("searchBox", "search",false,'Search');
 Include dependency graph for pubnub.h:</div>
 <div class="dyncontent">
 <div class="center"><img src="pubnub_8h__incl.png" border="0" usemap="#pubnub_8h" alt=""/></div>
-<map name="pubnub_8h" id="pubnub_8h">
-</map>
 </div>
 </div>
 <p><a href="pubnub_8h_source.html">Go to the source code of this file.</a></p>
@@ -135,15 +133,16 @@ Enumerations</h2></td></tr>
 <tr class="memitem:aa353f2e1e6a39e824e248431bbdfd412"><td class="memItemLeft" align="right" valign="top">enum &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="pubnub_8h.html#aa353f2e1e6a39e824e248431bbdfd412">pubnub_res</a> { <br/>
 &#160;&#160;<a class="el" href="pubnub_8h.html#aa353f2e1e6a39e824e248431bbdfd412aac883c74931c7b4152720de6526b3b39">PNR_OK</a>, 
 <a class="el" href="pubnub_8h.html#aa353f2e1e6a39e824e248431bbdfd412acefd67abfc99371c3b29155899c3c06c">PNR_TIMEOUT</a>, 
+<a class="el" href="pubnub_8h.html#aa353f2e1e6a39e824e248431bbdfd412a942e027ab9b94e69c2e22f465fbac49b">PNR_ABORTED</a>, 
 <a class="el" href="pubnub_8h.html#aa353f2e1e6a39e824e248431bbdfd412ab1f3a403e75500dfbb678189ae33eb5d">PNR_IO_ERROR</a>, 
-<a class="el" href="pubnub_8h.html#aa353f2e1e6a39e824e248431bbdfd412a938146b5b2cdeb3666c893c496bbfe40">PNR_HTTP_ERROR</a>, 
 <br/>
-&#160;&#160;<a class="el" href="pubnub_8h.html#aa353f2e1e6a39e824e248431bbdfd412aa9f626e7501a1606384fa146f3606473">PNR_FORMAT_ERROR</a>, 
+&#160;&#160;<a class="el" href="pubnub_8h.html#aa353f2e1e6a39e824e248431bbdfd412a938146b5b2cdeb3666c893c496bbfe40">PNR_HTTP_ERROR</a>, 
+<a class="el" href="pubnub_8h.html#aa353f2e1e6a39e824e248431bbdfd412aa9f626e7501a1606384fa146f3606473">PNR_FORMAT_ERROR</a>, 
 <a class="el" href="pubnub_8h.html#aa353f2e1e6a39e824e248431bbdfd412a6587ab1fca5e9b6fdac2cbcd9e7717a4">PNR_CANCELLED</a>, 
 <a class="el" href="pubnub_8h.html#aa353f2e1e6a39e824e248431bbdfd412a50d36e729881cfa69406497402b10aca">PNR_STARTED</a>, 
-<a class="el" href="pubnub_8h.html#aa353f2e1e6a39e824e248431bbdfd412a1bb68e6947f6306917334d2fd47b13f6">PNR_IN_PROGRESS</a>, 
 <br/>
-&#160;&#160;<a class="el" href="pubnub_8h.html#aa353f2e1e6a39e824e248431bbdfd412ad07051601dc5bae29d45ac9126b05246">PNR_RX_BUFF_NOT_EMPTY</a>, 
+&#160;&#160;<a class="el" href="pubnub_8h.html#aa353f2e1e6a39e824e248431bbdfd412a1bb68e6947f6306917334d2fd47b13f6">PNR_IN_PROGRESS</a>, 
+<a class="el" href="pubnub_8h.html#aa353f2e1e6a39e824e248431bbdfd412ad07051601dc5bae29d45ac9126b05246">PNR_RX_BUFF_NOT_EMPTY</a>, 
 <a class="el" href="pubnub_8h.html#aa353f2e1e6a39e824e248431bbdfd412a0b03f9cd077805d73b78f5aa296c1bfc">PNR_TX_BUFF_TOO_SMALL</a>
 <br/>
  }</td></tr>
@@ -339,11 +338,15 @@ Variables</h2></td></tr>
 <tr><td class="fieldname"><em><a class="anchor" id="aa353f2e1e6a39e824e248431bbdfd412acefd67abfc99371c3b29155899c3c06c"></a>PNR_TIMEOUT</em>&#160;</td><td class="fielddoc">
 <p>Time out before the request has completed. </p>
 </td></tr>
+<tr><td class="fieldname"><em><a class="anchor" id="aa353f2e1e6a39e824e248431bbdfd412a942e027ab9b94e69c2e22f465fbac49b"></a>PNR_ABORTED</em>&#160;</td><td class="fielddoc">
+<p>Connection to Pubnub aborted (in most cases, a TCP reset was received) </p>
+</td></tr>
 <tr><td class="fieldname"><em><a class="anchor" id="aa353f2e1e6a39e824e248431bbdfd412ab1f3a403e75500dfbb678189ae33eb5d"></a>PNR_IO_ERROR</em>&#160;</td><td class="fielddoc">
 <p>Communication error (network or HTTP response format). </p>
 </td></tr>
 <tr><td class="fieldname"><em><a class="anchor" id="aa353f2e1e6a39e824e248431bbdfd412a938146b5b2cdeb3666c893c496bbfe40"></a>PNR_HTTP_ERROR</em>&#160;</td><td class="fielddoc">
 <p>HTTP error. </p>
+<p>Call <a class="el" href="pubnub_8h.html#a66dc0f940def45e87ec92d63539bdab1" title="Returns the HTTP reply code of the last transaction in the p context. ">pubnub_last_http_code()</a> to get the error code. </p>
 </td></tr>
 <tr><td class="fieldname"><em><a class="anchor" id="aa353f2e1e6a39e824e248431bbdfd412aa9f626e7501a1606384fa146f3606473"></a>PNR_FORMAT_ERROR</em>&#160;</td><td class="fielddoc">
 <p>Unexpected input in received JSON. </p>
@@ -357,7 +360,7 @@ Variables</h2></td></tr>
 </td></tr>
 <tr><td class="fieldname"><em><a class="anchor" id="aa353f2e1e6a39e824e248431bbdfd412a1bb68e6947f6306917334d2fd47b13f6"></a>PNR_IN_PROGRESS</em>&#160;</td><td class="fielddoc">
 <p>Transaction (already) ongoing. </p>
-<p>Can't start a new transaction. </p>
+<p>Can't start a new transaction while the old one is in progress. </p>
 </td></tr>
 <tr><td class="fieldname"><em><a class="anchor" id="aa353f2e1e6a39e824e248431bbdfd412ad07051601dc5bae29d45ac9126b05246"></a>PNR_RX_BUFF_NOT_EMPTY</em>&#160;</td><td class="fielddoc">
 <p>Receive buffer (from previous transaction) not read, new subscription not allowed. </p>
@@ -814,7 +817,7 @@ transaction". The outcome is sent to the process that starts the transaction via
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Fri Dec 26 2014 21:46:46 for Pubnub Contiki Library by &#160;<a href="http://www.doxygen.org/index.html">
+Generated on Wed Feb 4 2015 22:53:28 for Pubnub Contiki Library by &#160;<a href="http://www.doxygen.org/index.html">
 <img class="footer" src="doxygen.png" alt="doxygen"/>
 </a> 1.8.6
 </small></address>

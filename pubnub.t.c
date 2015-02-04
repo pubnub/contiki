@@ -1,4 +1,4 @@
-/* -*- c-file-style:"stroustrup" -*- */
+/* -*- c-file-style:"stroustrup"; indent-tabs-mode: nil -*- */
 #include "cgreen/cgreen.h"
 #include "cgreen/mocks.h"
 
@@ -8,6 +8,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <setjmp.h>
 
 /* A less chatty cgreen :) */
 
@@ -86,11 +87,26 @@ void process_start(struct process *p, const char *arg)
     mock(p, arg);
 }
 
+static bool m_expect_assert;
+static jmp_buf m_assert_exp_jmpbuf;
+static char const *m_expect_assert_file;
 
 void _xassert(const char *s, int i)
 {
-    mock(s, i);
+//    mock(s, i);
+    attest(m_expect_assert);
+    attest(m_expect_assert_file, streqs(s));
+    m_expect_assert = false;
+    longjmp(m_assert_exp_jmpbuf, 1);
 }
+
+#define expect_assert_in(expr, file) {          \
+    m_expect_assert = true;                     \
+    m_expect_assert_file = file;                \
+    int val = setjmp(m_assert_exp_jmpbuf);      \
+    if (0 == val) { expr; }                     \
+    else { attest(!m_expect_assert); }          \
+    }
 
 
 /* Not mocked, but copied to avoid linking whole modules which would
@@ -109,24 +125,24 @@ int uiplib_ip4addrconv(const char *addrstr, uip_ip4addr_t *ipaddr)
     unsigned char tmp = 0;
     
     for (i = 0; i < 4; ++i) {
-	char c;
-	unsigned char j = 0;
-	do {
-	    c = *addrstr;
-	    if (++j > 4) {
-		return 0;
-	    }
-	    if (c == '.' || c == 0 || c == ' ') {
-		ipaddr->u8[i] = tmp;
-		tmp = 0;
-	    } else if (c >= '0' && c <= '9') {
-		tmp = (tmp * 10) + (c - '0');
-	    } else {
-		return 0;
-	    }
-	    ++addrstr;
-	    ++charsread;
-	} while (c != '.' && c != 0 && c != ' ');
+        char c;
+        unsigned char j = 0;
+        do {
+            c = *addrstr;
+            if (++j > 4) {
+                return 0;
+            }
+            if (c == '.' || c == 0 || c == ' ') {
+                ipaddr->u8[i] = tmp;
+                tmp = 0;
+            } else if (c >= '0' && c <= '9') {
+                tmp = (tmp * 10) + (c - '0');
+            } else {
+                return 0;
+            }
+            ++addrstr;
+            ++charsread;
+        } while (c != '.' && c != 0 && c != ' ');
     }
     return charsread-1;
 }
@@ -162,19 +178,19 @@ inline void readbuf_discard() {
 PT_THREAD(psock_readto(struct psock *psock, unsigned char c))
 {
     if (readbuf_left() > 0) {
-	uint8_t *next_pos = memchr(m_readbuf_pos, c, readbuf_left());
-	if (NULL == next_pos) {
-	    return PT_YIELDED;
-	}
-	++next_pos;
-	size_t len = next_pos - m_readbuf_pos;
-	memcpy(psock->bufptr, m_readbuf_pos, len);
-	m_readbuf_pos = next_pos;
-	psock->buf.left = psock->bufsize - len;
-
-	return PT_ENDED;
+        uint8_t *next_pos = memchr(m_readbuf_pos, c, readbuf_left());
+        if (NULL == next_pos) {
+            return PT_YIELDED;
+        }
+        ++next_pos;
+        size_t len = next_pos - m_readbuf_pos;
+        memcpy(psock->bufptr, m_readbuf_pos, len);
+        m_readbuf_pos = next_pos;
+        psock->buf.left = psock->bufsize - len;
+        
+        return PT_ENDED;
     }
-
+    
     return PT_YIELDED;
 }
 
@@ -182,16 +198,16 @@ PT_THREAD(psock_readto(struct psock *psock, unsigned char c))
 PT_THREAD(psock_readbuf_len(struct psock *psock, uint16_t len))
 {
     if (readbuf_left() >= len) {
-	memcpy(psock->bufptr, m_readbuf_pos, len);
-	m_readbuf_pos += len;
-	psock->buf.left = psock->bufsize - len;
-	return PT_ENDED;
+        memcpy(psock->bufptr, m_readbuf_pos, len);
+        m_readbuf_pos += len;
+        psock->buf.left = psock->bufsize - len;
+        return PT_ENDED;
     }
     else if (readbuf_left() >= psock->bufsize) {
-	memcpy(psock->bufptr, m_readbuf_pos, psock->bufsize);
-	m_readbuf_pos += psock->bufsize;
-	psock->buf.left = 0;
-	return PT_ENDED;
+        memcpy(psock->bufptr, m_readbuf_pos, psock->bufsize);
+        m_readbuf_pos += psock->bufsize;
+        psock->buf.left = 0;
+        return PT_ENDED;
     }
     return PT_YIELDED;
 }
@@ -214,12 +230,10 @@ void psock_init(struct psock *psock, uint8_t *buffer, unsigned int buffersize)
 Ensure(can_get_context) {
     size_t i;
     for (i = 0; i < PUBNUB_CTX_MAX; ++i) {
-	attest(pubnub_get_ctx(i), differs(NULL));
+        attest(pubnub_get_ctx(i), differs(NULL));
     }
-    expect(_xassert, when(s, streqs("pubnub.c")));
-    pubnub_get_ctx(PUBNUB_CTX_MAX);
-    expect(_xassert, when(s, streqs("pubnub.c")));
-    pubnub_get_ctx(-1);
+    expect_assert_in(pubnub_get_ctx(PUBNUB_CTX_MAX), "pubnub.c");
+    expect_assert_in(pubnub_get_ctx(-1), "pubnub.c");
 }
 
 
@@ -249,7 +263,7 @@ AfterEach(single_context_pubnub) {
     pubnub_done(pbp);
     attest(pubnub_process.thread(&pubnub_process.pt, PROCESS_EVENT_EXIT, NULL), equals(PT_ENDED));
     if (m_readbuf != NULL) {
-	free(m_readbuf);
+        free(m_readbuf);
     }
 }
 
@@ -261,18 +275,18 @@ void incoming(char const*str)
 
     uint8_t *readbuf_ins_pt = m_readbuf;
     if (readbuf_left() > 0) {
-	memmove(m_readbuf, m_readbuf + m_readbuf_size - readbuf_left(), readbuf_left());
-	readbuf_ins_pt += readbuf_left();
+        memmove(m_readbuf, m_readbuf + m_readbuf_size - readbuf_left(), readbuf_left());
+        readbuf_ins_pt += readbuf_left();
     }
-
+    
     if (strlen(str) + readbuf_left() < m_readbuf_capacity) {
-	memcpy(readbuf_ins_pt, str, strlen(str) + 1);
-	m_readbuf_size = strlen((char*)m_readbuf);
-	m_readbuf_pos = m_readbuf;
-	attest(pubnub_process.thread(&pubnub_process.pt, TCPIP_EVENT, pbp), equals(PT_YIELDED));
+        memcpy(readbuf_ins_pt, str, strlen(str) + 1);
+        m_readbuf_size = strlen((char*)m_readbuf);
+        m_readbuf_pos = m_readbuf;
+        attest(pubnub_process.thread(&pubnub_process.pt, TCPIP_EVENT, pbp), equals(PT_YIELDED));
     }
     else {
-	fail_test("no space in read buffer");
+        fail_test("no space in read buffer");
     }
 }
 
@@ -290,21 +304,21 @@ inline void incoming_and_close(char const *str) {
 void expect_cached_dns_for_pubnub_origin()
 {
     expect(resolv_lookup, when(name, streqs(PUBNUB_ORIGIN)),
-	   sets(ipaddr, pubnub_ip_addr_ptr),
-	   returns(RESOLV_STATUS_CACHED));
+       sets(ipaddr, pubnub_ip_addr_ptr),
+       returns(RESOLV_STATUS_CACHED));
     expect(tcp_connect,
-	   when(ripaddr, equals(pubnub_ip_addr_ptr)),
-	   when(port, equals(uip_htons(HTTP_PORT))),
-	   when(appstate, equals(pbp)));
+       when(ripaddr, equals(pubnub_ip_addr_ptr)),
+       when(port, equals(uip_htons(HTTP_PORT))),
+       when(appstate, equals(pbp)));
 }
 
 
-#define expect_event(ev_)				\
-    expect(process_post,				\
-	   when(p, equals(&pubnub_process)),		\
-	   when(ev, equals(ev_)),			\
-	   when(data, equals(pbp))			\
-	)
+#define expect_event(ev_)                \
+    expect(process_post,                \
+       when(p, equals(&pubnub_process)),        \
+       when(ev, equals(ev_)),            \
+       when(data, equals(pbp))            \
+    )
 
 
 inline void expect_outgoing_with_url(char const *url) {
@@ -338,7 +352,7 @@ Ensure(single_context_pubnub, leave_query_dns) {
     pubnub_init(pbp, "pubkey", "subskey");
 
     expect(resolv_lookup, when(name, streqs(PUBNUB_ORIGIN)),
-	   returns(RESOLV_STATUS_EXPIRED));
+       returns(RESOLV_STATUS_EXPIRED));
     expect(resolv_query, when(name, streqs(PUBNUB_ORIGIN)));
     attest(pubnub_leave(pbp, "dunav-tisa-dunav"), equals(PNR_STARTED));
 
@@ -430,7 +444,9 @@ Ensure(single_context_pubnub, leave_cached_dns_cancel) {
 
     expect_event(pubnub_leave_event);
     pubnub_cancel(pbp);
-    close_incoming();
+    attest(pubnub_process.thread(&pubnub_process.pt, TCPIP_EVENT, pbp), equals(PT_YIELDED));
+    uip_flags = 0;
+    attest(pubnub_process.thread(&pubnub_process.pt, TCPIP_EVENT, pbp), equals(PT_YIELDED));
     close_incoming();
     attest(pubnub_last_result(pbp), equals(PNR_CANCELLED));
 }
@@ -529,14 +545,14 @@ Ensure(single_context_pubnub, subscribe_cached_dns) {
     expect_outgoing_with_url("/subscribe/timok/morava,lim/0/14179836755957292?&pnsdk=PubNub-Contiki-%2F1.1");
 
     expect_event(pubnub_subscribe_event);
-    incoming_and_close("HTTP/1.1 200\r\nContent-Length: 59\r\n\r\n[[{\"Wi\"},[\"Xa\"],\"Qi\"],\"14179857817724547\",\"lim,morava,lim\"]");
+    incoming_and_close("HTTP/1.1 200\r\nContent-Length: 63\r\n\r\n[[{\"Wi\"},[\"Xa\"],\"\\\"Qi\\\"\"],\"14179857817724547\",\"lim,morava,lim\"]");
 
     attest(readbuf_left(), equals(0));
     attest(pubnub_last_result(pbp), equals(PNR_OK));
     attest(pubnub_last_http_code(pbp), equals(200));
     attest(pubnub_get(pbp), streqs("{\"Wi\"}"));
     attest(pubnub_get(pbp), streqs("[\"Xa\"]"));
-    attest(pubnub_get(pbp), streqs("\"Qi\""));
+    attest(pubnub_get(pbp), streqs("\"\\\"Qi\\\"\""));
     attest(pubnub_get(pbp), equals(NULL));
     attest(pubnub_get_channel(pbp), streqs("lim"));
     attest(pubnub_get_channel(pbp), streqs("morava"));
@@ -704,19 +720,19 @@ Ensure(single_context_pubnub, subscribe_corner_cases) {
     size_t size_so_far = 0;
     int i;
     for (i = 0; i < PACKETS; ++i) {
-	memset(s, 'X', MAX_USEFUL / PACKETS);
-	s[MAX_USEFUL / PACKETS] = '\0';
-	size_so_far += MAX_USEFUL / PACKETS;
-	incoming(s);
+        memset(s, 'X', MAX_USEFUL / PACKETS);
+        s[MAX_USEFUL / PACKETS] = '\0';
+        size_so_far += MAX_USEFUL / PACKETS;
+        incoming(s);
     }
     if (size_so_far < MAX_USEFUL) {
-	memset(s, 'X', MAX_USEFUL - size_so_far);
-	s[MAX_USEFUL - size_so_far] = '\0';
-	incoming(s);
+        memset(s, 'X', MAX_USEFUL - size_so_far);
+        s[MAX_USEFUL - size_so_far] = '\0';
+        incoming(s);
     }
     free(s);
     incoming_and_close(INTERLUDE);
-
+    
     attest(readbuf_left(), equals(0));
     attest(pubnub_last_result(pbp), equals(PNR_OK));
     attest(pubnub_last_http_code(pbp), equals(200));
@@ -825,13 +841,13 @@ Ensure(single_context_pubnub, subscribe_bad_response_content) {
     /* Last message array element does not end with " */
     test_("33\r\n\r\n[[\"Hi\",\"Fi\"],\"14179836755957292.]");
 
-    /* No string begging in the message (but has ending just before "]") */
+    /* No string beggining in the message (but has ending just before "]") */
     test_("33\r\n\r\n[[SHix,AFif],114179836755957292\"]");
 
     /* Too big time-token */
     test_("81\r\n\r\n[[1098,7654],\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdefX\"]");
 
-    /* No string begging for the "second from the right" in the message */
+    /* No string beggining for the "second from the right" in the message */
     test_("36\r\n\r\n[[123,456],114179836755957292\",\"ch\"]");
 
     /* Message empty  */
@@ -871,6 +887,15 @@ Ensure(single_context_pubnub, subscribe_bad_response_content) {
     test_("5\r\n\r\n[,,\"]");
     test_("5\r\n\r\n[,\",]");
     test_("5\r\n\r\n[\",,]");
+
+    /* Bad JSON message: No ending brace */
+    test_("33\r\n\r\nx[{\"Hi\",\"F\"],\"14179836755957292\"]");
+
+    /* Bad JSON message: No ending bracket */
+    test_("33\r\n\r\nx[{\"Hi\",\"F\"],\"14179836755957292\"]");
+
+    /* Bad JSON message: No ending quote */
+    test_("33\r\n\r\nx[[\"Hi\",\"F\"],\"14179836755957292\"]");
 
 #undef test_
 }
@@ -978,4 +1003,122 @@ Ensure(single_context_pubnub, tcp_closed) {
     attest(pubnub_last_result(pbp), equals(PNR_IO_ERROR));
     attest(pubnub_get(pbp), equals(NULL));
     attest(pubnub_get_channel(pbp), equals(NULL));
+}
+
+
+Ensure(single_context_pubnub, tcp_data_ignored_while_connect) {
+    pubnub_init(pbp, "kalauz", "drava");
+
+    expect_cached_dns_for_pubnub_origin();
+    attest(pubnub_subscribe(pbp, "morava"), equals(PNR_STARTED));
+
+    incoming("");
+
+    attest(pubnub_last_result(pbp), equals(PNR_OK));
+    attest(pubnub_get(pbp), equals(NULL));
+    attest(pubnub_get_channel(pbp), equals(NULL));
+}
+
+
+Ensure(single_context_pubnub, tcp_events_ignored_while_disconnect) {
+    pubnub_init(pbp, "kalauz", "drava");
+
+    expect_cached_dns_for_pubnub_origin();
+    attest(pubnub_subscribe(pbp, "morava"), equals(PNR_STARTED));
+
+    uip_flags = UIP_CONNECTED;
+    expect_outgoing_with_url("/subscribe/drava/morava/0/0?&pnsdk=PubNub-Contiki-%2F1.1");
+
+    incoming("HTTP/1.1 200\r\nContent-Length: 25\r\n\r\n[[0],\"14179836755957292\"]");
+    uip_flags = 0;
+    attest(pubnub_process.thread(&pubnub_process.pt, TCPIP_EVENT, pbp), equals(PT_YIELDED));
+    attest(pubnub_process.thread(&pubnub_process.pt, TCPIP_EVENT, pbp), equals(PT_YIELDED));
+
+    attest(pubnub_last_result(pbp), equals(PNR_OK));
+    attest(pubnub_get(pbp), streqs("0"));
+    attest(pubnub_get(pbp), equals(NULL));
+    attest(pubnub_get_channel(pbp), equals(NULL));
+}
+
+
+Ensure(single_context_pubnub, cancel_before_connect) {
+    pubnub_init(pbp, "sitnica", "tura");
+
+    expect(resolv_lookup, when(name, streqs(PUBNUB_ORIGIN)),
+       returns(RESOLV_STATUS_EXPIRED));
+    expect(resolv_query, when(name, streqs(PUBNUB_ORIGIN)));
+    attest(pubnub_subscribe(pbp, "morava"), equals(PNR_STARTED));
+
+    expect_event(pubnub_subscribe_event);
+    pubnub_cancel(pbp);
+    attest(pubnub_last_result(pbp), equals(PNR_CANCELLED));
+}
+
+
+Ensure(single_context_pubnub, cancel_on_idle) {
+    pubnub_init(pbp, "sitnica", "tura");
+
+    pubnub_cancel(pbp);
+}
+
+
+Ensure(single_context_pubnub, cant_subscribe_until_messages_read) {
+    pubnub_init(pbp, "sitnica", "tura");
+
+    expect_cached_dns_for_pubnub_origin();
+    attest(pubnub_subscribe(pbp, "dvapodva"), equals(PNR_STARTED));
+
+    uip_flags = UIP_CONNECTED;
+    expect_outgoing_with_url("/subscribe/tura/dvapodva/0/0?&pnsdk=PubNub-Contiki-%2F1.1");
+    expect_event(pubnub_subscribe_event);
+    incoming_and_close("HTTP/1.1 200\r\nContent-Length: 33\r\n\r\n[[\"Hi\",\"Fi\"],\"14179836755957292\"]");
+
+    attest(readbuf_left(), equals(0));
+    attest(pubnub_last_result(pbp), equals(PNR_OK));
+    attest(pubnub_last_http_code(pbp), equals(200));
+    attest(pubnub_get_channel(pbp), equals(NULL));
+
+    attest(pubnub_subscribe(pbp, "x"), equals(PNR_RX_BUFF_NOT_EMPTY));
+}
+
+
+Ensure(single_context_pubnub, illegal_context_fires_assert) {
+    expect_assert_in(pubnub_init(NULL, "k", "u"), "pubnub.c");
+    expect_assert_in(pubnub_publish(NULL, "x", "0"), "pubnub.c");
+    expect_assert_in(pubnub_subscribe(NULL, "x"), "pubnub.c");
+    expect_assert_in(pubnub_leave(NULL, "x"), "pubnub.c");
+    expect_assert_in(pubnub_cancel(NULL), "pubnub.c");
+    expect_assert_in(pubnub_done(NULL), "pubnub.c");
+    expect_assert_in(pubnub_set_uuid(NULL, ""), "pubnub.c");
+    expect_assert_in(pubnub_set_auth(NULL, ""), "pubnub.c");
+    expect_assert_in(pubnub_last_result(NULL), "pubnub.c");
+    expect_assert_in(pubnub_last_http_code(NULL), "pubnub.c");
+    expect_assert_in(pubnub_get(NULL), "pubnub.c");
+    expect_assert_in(pubnub_get_channel(NULL), "pubnub.c");
+
+    expect_assert_in(pubnub_done((pubnub_t*)((char*)pbp + 10000)), "pubnub.c");
+}
+
+
+Ensure(single_context_pubnub, null_events_ignored) {
+    attest(pubnub_process.thread(&pubnub_process.pt, TCPIP_EVENT, NULL), equals(PT_YIELDED));
+    attest(pubnub_process.thread(&pubnub_process.pt, resolv_event_found, NULL), equals(PT_YIELDED));
+}
+
+
+Ensure(single_context_pubnub, events_ignored_on_idle) {
+    pubnub_init(pbp, "sitnica", "tura");
+
+    attest(pubnub_process.thread(&pubnub_process.pt, TCPIP_EVENT, pbp), equals(PT_YIELDED));
+    attest(pubnub_process.thread(&pubnub_process.pt, resolv_event_found, ""), equals(PT_YIELDED));
+
+    expect(resolv_lookup, when(name, streqs(PUBNUB_ORIGIN)),
+       returns(RESOLV_STATUS_EXPIRED));
+    expect(resolv_query, when(name, streqs(PUBNUB_ORIGIN)));
+    attest(pubnub_leave(pbp, "x"), equals(PNR_STARTED));
+    attest(pubnub_process.thread(&pubnub_process.pt, TCPIP_EVENT, pbp), equals(PT_YIELDED));
+
+    expect_event(pubnub_leave_event);
+    pubnub_cancel(pbp);
+    attest(pubnub_last_result(pbp), equals(PNR_CANCELLED));
 }

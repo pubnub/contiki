@@ -96,7 +96,7 @@ var searchBox = new SearchBox("searchBox", "search",false,'Search');
 <p>The fundamental flow for working with the library is this:</p>
 <p>0. Foremost, you should have a Contiki OS process to handle the outcome of your requests. You can work without them, but that would be somewhat clumsy. Of course, this can be done in an already existing Contiki OS process of yours.</p>
 <ol type="1">
-<li>Obtan a Pubnub "context" from the library. It is an opaque pointer. <em>Note</em>: you can't create contexts on your own. "All Pubnub contexz
+<li>Obtain a Pubnub "context" from the library. It is an opaque pointer. <em>Note</em>: you can't create contexts on your own. "All Pubnub contexz
    are belong to us." :)</li>
 <li>Initialize the context, giving the subscribe and publish key.</li>
 <li>Start a operation/transaction/Pubnub API call on the context. It will either fail or return an indication of "started". The outcome will be sent to your process, with event indicating the transaction type and data being the context on which the transaction was carried out.</li>
@@ -142,7 +142,7 @@ while (1) {
 </div></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Fri Dec 26 2014 21:46:46 for Pubnub Contiki Library by &#160;<a href="http://www.doxygen.org/index.html">
+Generated on Wed Feb 4 2015 22:53:28 for Pubnub Contiki Library by &#160;<a href="http://www.doxygen.org/index.html">
 <img class="footer" src="doxygen.png" alt="doxygen"/>
 </a> 1.8.6
 </small></address>

@@ -113,11 +113,13 @@ enum pubnub_res {
     PNR_OK,
     /** Time out before the request has completed. */
     PNR_TIMEOUT,
-    /** Connection to Pubnub aborted (reset) */
+    /** Connection to Pubnub aborted (in most cases, a TCP reset was
+        received) */
     PNR_ABORTED,
     /** Communication error (network or HTTP response format). */
     PNR_IO_ERROR,
-    /** HTTP error. */
+    /** HTTP error. Call pubnub_last_http_code() to get the error
+     * code. */
     PNR_HTTP_ERROR,
     /** Unexpected input in received JSON. */
     PNR_FORMAT_ERROR,
@@ -125,7 +127,8 @@ enum pubnub_res {
     PNR_CANCELLED,
     /** Transaction started. Await the outcome via process message. */
     PNR_STARTED,
-    /** Transaction (already) ongoing. Can't start a new transaction. */
+    /** Transaction (already) ongoing. Can't start a new transaction
+        while the old one is in progress. */
     PNR_IN_PROGRESS,
     /** Receive buffer (from previous transaction) not read, new
         subscription not allowed.

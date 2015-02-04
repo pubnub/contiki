@@ -180,7 +180,7 @@ static bool split_array(char *buf)
             case '[': case '{': bracket_level++; break;
             case ']': case '}': bracket_level--; break;
                 /* if at root, split! */
-            case ',': if (bracket_level == 0) *buf = '\0'; break;
+            case ',': if (bracket_level == 0) { *buf = '\0'; } break;
             default: break;
             }
         }

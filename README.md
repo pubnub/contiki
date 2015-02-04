@@ -52,7 +52,7 @@ The fundamental flow for working with the library is this:
    be somewhat clumsy. Of course, this can be done in an already
    existing Contiki OS process of yours.
    
-1. Obtan a Pubnub "context" from the library. It is an opaque pointer.
+1. Obtain a Pubnub "context" from the library. It is an opaque pointer.
    *Note*: you can't create contexts on your own. "All Pubnub contexz
    are belong to us." :)
 
