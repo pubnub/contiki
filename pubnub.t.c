@@ -430,6 +430,8 @@ Ensure(single_context_pubnub, leave_cached_dns_cancel) {
 
     expect_event(pubnub_leave_event);
     pubnub_cancel(pbp);
+    close_incoming();
+    close_incoming();
     attest(pubnub_last_result(pbp), equals(PNR_CANCELLED));
 }
 
@@ -445,6 +447,8 @@ Ensure(single_context_pubnub, leave_while_busy_fails) {
 
     expect_event(pubnub_leave_event);
     pubnub_cancel(pbp);
+    close_incoming();
+    close_incoming();
     attest(pubnub_last_result(pbp), equals(PNR_CANCELLED));
 }
 
@@ -477,6 +481,8 @@ Ensure(single_context_pubnub, publish_while_busy_fails) {
 
     expect_event(pubnub_leave_event);
     pubnub_cancel(pbp);
+    close_incoming();
+    close_incoming();
     attest(pubnub_last_result(pbp), equals(PNR_CANCELLED));
 }
 
@@ -651,6 +657,8 @@ Ensure(single_context_pubnub, subscribe_while_busy_fails) {
 
     expect_event(pubnub_publish_event);
     pubnub_cancel(pbp);
+    close_incoming();
+    close_incoming();
     attest(pubnub_last_result(pbp), equals(PNR_CANCELLED));
 }
 
@@ -915,7 +923,7 @@ Ensure(single_context_pubnub, tcp_abort) {
     expect_event(pubnub_subscribe_event);
     incoming("");
 
-    attest(pubnub_last_result(pbp), equals(PNR_IO_ERROR));
+    attest(pubnub_last_result(pbp), equals(PNR_ABORTED));
     attest(pubnub_get(pbp), equals(NULL));
     attest(pubnub_get_channel(pbp), equals(NULL));
 
@@ -932,7 +940,7 @@ Ensure(single_context_pubnub, tcp_abort) {
     expect_event(pubnub_subscribe_event);
     incoming("");
 
-    attest(pubnub_last_result(pbp), equals(PNR_IO_ERROR));
+    attest(pubnub_last_result(pbp), equals(PNR_ABORTED));
     attest(pubnub_get(pbp), equals(NULL));
     attest(pubnub_get_channel(pbp), equals(NULL));
 }

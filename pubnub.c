@@ -1,4 +1,4 @@
-/* -*- c-file-style:"stroustrup" -*- */
+/* -*- c-file-style:"stroustrup"; indent-tabs-mode: nil -*- */
 #include "pubnub.h"
 
 #include "contiki-net.h"
@@ -62,7 +62,9 @@ enum pubnub_state {
     PS_WAIT_DNS,
     PS_CONNECT,
     PS_TRANSACTION,
-    PS_WAIT_CLOSE
+    PS_WAIT_CLOSE,
+    PS_WAIT_CANCEL,
+    PS_WAIT_CANCEL_CLOSE
 };
 
 /** The Pubnub context */
@@ -116,7 +118,7 @@ static bool valid_ctx_ptr(pubnub_t const *pb)
     response from DNS server.
 
     @param pb The context for which to handle starting of connection
- */
+*/
 static void handle_start_connect(pubnub_t *pb)
 {
     uip_ipaddr_t *ipaddrptr;
@@ -126,10 +128,10 @@ static void handle_start_connect(pubnub_t *pb)
     
     pubnub_dns_lookup(PUBNUB_ORIGIN, ipaddrptr);
     if (NULL == ipaddrptr) {
-	DEBUG_PRINTF("Pubnub: DNS Querying for %s\n", PUBNUB_ORIGIN);
-	pubnub_dns_query(PUBNUB_ORIGIN);
-	pb->state = PS_WAIT_DNS;
-	return;
+        DEBUG_PRINTF("Pubnub: DNS Querying for %s\n", PUBNUB_ORIGIN);
+        pubnub_dns_query(PUBNUB_ORIGIN);
+        pb->state = PS_WAIT_DNS;
+        return;
     }
     
     PROCESS_CONTEXT_BEGIN(&pubnub_process);
@@ -148,7 +150,7 @@ static int find_string_start(char const *buf, int len)
     for (i = len-1; i > 0; --i) {
         if (buf[i] == '"') {
             return (buf[i-1] == ',') ? i : -1;
-	}
+        }
     }
     return -1;
 }
@@ -167,19 +169,19 @@ static bool split_array(char *buf)
         if (escaped) {
             escaped = false;
         } 
-	else if ('"' == *buf) {
-	    in_string = !in_string;
-	}
-	else if (in_string) {
-	    escaped = ('\\' == *buf);
+        else if ('"' == *buf) {
+            in_string = !in_string;
         }
-	else {
+        else if (in_string) {
+            escaped = ('\\' == *buf);
+        }
+        else {
             switch (*buf) {
-	    case '[': case '{': bracket_level++; break;
-	    case ']': case '}': bracket_level--; break;
+            case '[': case '{': bracket_level++; break;
+            case ']': case '}': bracket_level--; break;
                 /* if at root, split! */
-	    case ',': if (bracket_level == 0) *buf = '\0'; break;
-	    default: break;
+            case ',': if (bracket_level == 0) *buf = '\0'; break;
+            default: break;
             }
         }
     }
@@ -214,15 +216,15 @@ static process_event_t trans2event(enum pubnub_trans trans)
 {
     switch (trans) {
     case PBTT_SUBSCRIBE:
-	return pubnub_subscribe_event;
+        return pubnub_subscribe_event;
     case PBTT_PUBLISH:
-	return pubnub_publish_event;
+        return pubnub_publish_event;
     case PBTT_LEAVE:
-	return pubnub_leave_event;
+        return pubnub_leave_event;
     case PBTT_NONE:
     default:
-	assert(0);
-	return PROCESS_EVENT_NONE;
+        assert(0);
+        return PROCESS_EVENT_NONE;
     }
 }
 
@@ -230,20 +232,20 @@ static process_event_t trans2event(enum pubnub_trans trans)
 static void trans_outcome(pubnub_t *pb, enum pubnub_res result)
 {
     pb->last_result = result;
-
+    
     DEBUG_PRINTF("Pubnub: Transaction outcome: %d, HTTP code: %d\n",
-		 result, pb->http_code
-	);
+                 result, pb->http_code
+        );
     if ((result == PNR_FORMAT_ERROR) || (PUBNUB_MISSMSG_OK && (result != PNR_OK))) {
-	/* In case of PubNub protocol error, abort an ongoing
-	 * subscribe and start over. This means some messages were
-	 * lost, but allows us to recover from bad situations,
-	 * e.g. too many messages queued or unexpected problem caused
-	 * by a particular message. */
-	pb->timetoken[0] = '0';
-	pb->timetoken[1] = '\0';
+        /* In case of PubNub protocol error, abort an ongoing
+         * subscribe and start over. This means some messages were
+         * lost, but allows us to recover from bad situations,
+         * e.g. too many messages queued or unexpected problem caused
+         * by a particular message. */
+        pb->timetoken[0] = '0';
+        pb->timetoken[1] = '\0';
     }
-
+    
     pb->state = PS_IDLE;
     process_post(pb->initiator, trans2event(pb->trans), pb);
 }
@@ -252,9 +254,19 @@ static void trans_outcome(pubnub_t *pb, enum pubnub_res result)
 void pubnub_cancel(pubnub_t *pb)
 {
     assert(valid_ctx_ptr(pb));
-
-    if (pb->state != PS_IDLE) {
-	trans_outcome(pb, PNR_CANCELLED);
+    
+    switch (pb->state) {
+    case PS_WAIT_CANCEL:
+    case PS_WAIT_CANCEL_CLOSE:
+    case PS_IDLE:
+        break;
+    case PS_WAIT_DNS:
+        pb->msg_ofs = pb->msg_end = 0;
+        trans_outcome(pb, PNR_CANCELLED);
+        break;
+    default:
+        pb->state = PS_WAIT_CANCEL;
+        break;                        
     }
 }
 
@@ -262,20 +274,20 @@ void pubnub_cancel(pubnub_t *pb)
 enum pubnub_res pubnub_publish(pubnub_t *pb, const char *channel, const char *message)
 {
     assert(valid_ctx_ptr(pb));
-
+    
     if (pb->state != PS_IDLE) {
         return PNR_IN_PROGRESS;
     }
     pb->initiator = PROCESS_CURRENT();
     pb->trans = PBTT_PUBLISH;
     pb->http_content_len = 0;
-
+    
     pb->http_buf_len = snprintf(
-	pb->http_buf, sizeof pb->http_buf,
-	"/publish/%s/%s/0/%s/0/", 
-	pb->publish_key, pb->subscribe_key, channel
-	);
-
+        pb->http_buf, sizeof pb->http_buf,
+        "/publish/%s/%s/0/%s/0/", 
+        pb->publish_key, pb->subscribe_key, channel
+        );
+    
     const char *pmessage = message;
     while (pmessage[0]) {
         /* RFC 3986 Unreserved characters plus few
@@ -284,7 +296,7 @@ enum pubnub_res pubnub_publish(pubnub_t *pb, const char *channel, const char *me
         if (okspan > 0) {
             if (okspan > sizeof(pb->http_buf)-1 - pb->http_buf_len) {
                 pb->http_buf_len = 0;
-		return PNR_TX_BUFF_TOO_SMALL;
+                return PNR_TX_BUFF_TOO_SMALL;
             }
             memcpy(pb->http_buf + pb->http_buf_len, pmessage, okspan);
             pb->http_buf_len += okspan;
@@ -298,16 +310,16 @@ enum pubnub_res pubnub_publish(pubnub_t *pb, const char *channel, const char *me
             enc[2] = "0123456789ABCDEF"[pmessage[0] % 16];
             if (3 > sizeof pb->http_buf - 1 - pb->http_buf_len) {
                 pb->http_buf_len = 0;
-		return PNR_TX_BUFF_TOO_SMALL;
+                return PNR_TX_BUFF_TOO_SMALL;
             }
             memcpy(pb->http_buf + pb->http_buf_len, enc, 4);
             pb->http_buf_len += 3;
             ++pmessage;
         }
     }
-
+    
     handle_start_connect(pb);
-
+    
     return PNR_STARTED;
 }
 
@@ -315,9 +327,9 @@ enum pubnub_res pubnub_publish(pubnub_t *pb, const char *channel, const char *me
 static int parse_subscribe_response(pubnub_t *p)
 {
     char *reply = p->http_reply;
-    int replylen = strlen(reply);
+    int replylen = p->http_buf_len;
     if (replylen < 2) {
-	return -1;
+        return -1;
     }
     if (reply[replylen-1] != ']' && replylen > 2) {
         replylen -= 2; // XXX: this seems required by Manxiang
@@ -325,14 +337,14 @@ static int parse_subscribe_response(pubnub_t *p)
     if ((reply[0] != '[') || (reply[replylen-1] != ']') || (reply[replylen-2] != '"')) {
         return -1;
     }
-
+    
     /* Extract the last argument. */
     int i = find_string_start(reply, replylen-2);
     if (i < 0) {
         return -1;
     }
     reply[replylen - 2] = 0;
-
+    
     /* Now, the last argument may either be a timetoken or a channel list. */
     if (reply[i-2] == '"') {
         int k;
@@ -341,16 +353,16 @@ static int parse_subscribe_response(pubnub_t *p)
         for (k = replylen - 2; k > i+1; --k) {
             if (reply[k] == ',') {
                 reply[k] = 0;
-	    }
-	}
-
+            }
+        }
+        
         /* ... and look for timetoken again. */
-	reply[i-2] = 0;
+        reply[i-2] = 0;
         p->chan_ofs = i+1;
         i = find_string_start(reply, i-2);
         if (i < 0) {
-	    p->chan_ofs = 0;
-	    p->chan_end = 0;
+            p->chan_ofs = 0;
+            p->chan_end = 0;
             return -1;
         }
         p->chan_end = replylen - 1;
@@ -359,24 +371,24 @@ static int parse_subscribe_response(pubnub_t *p)
         p->chan_ofs = 0;
         p->chan_end = 0;
     }
-
+    
     /* Now, i points at
      * [[1,2,3],"5678"]
      * [[1,2,3],"5678","a,b,c"]
      *          ^-- here */
-
+    
     /* Setup timetoken. */
     if (replylen-2 - (i+1) >= sizeof p->timetoken) {
         return -1;
     }
     strcpy(p->timetoken, reply + i+1);
     reply[i-2] = 0; // terminate the [] message array (before the ]!)
-
+    
     /* Set up the message list - offset, length and NUL-characters splitting
      * the messages. */
     p->msg_ofs = 2;
     p->msg_end = i-2;
-
+    
     return split_array(reply + p->msg_ofs) ? 0 : -1;
 }
 
@@ -384,15 +396,15 @@ static int parse_subscribe_response(pubnub_t *p)
 char const *pubnub_get(pubnub_t *pb)
 {
     assert(valid_ctx_ptr(pb));
-
+    
     if (pb->msg_ofs < pb->msg_end) {
-	char const *rslt = pb->http_reply + pb->msg_ofs;
-	pb->msg_ofs += strlen(rslt);
-	if (pb->msg_ofs++ <= pb->msg_end) {
-	    return rslt;
-	}
+        char const *rslt = pb->http_reply + pb->msg_ofs;
+        pb->msg_ofs += strlen(rslt);
+        if (pb->msg_ofs++ <= pb->msg_end) {
+            return rslt;
+        }
     }
-
+    
     return NULL;
 }
 
@@ -400,15 +412,15 @@ char const *pubnub_get(pubnub_t *pb)
 char const *pubnub_get_channel(pubnub_t *pb)
 {
     assert(valid_ctx_ptr(pb));
-
+    
     if (pb->chan_ofs < pb->chan_end) {
-	char const* rslt = pb->http_reply + pb->chan_ofs;
-	pb->chan_ofs += strlen(rslt);
-	if (pb->chan_ofs++ <= pb->chan_end) {
-	    return rslt;
-	}
+        char const* rslt = pb->http_reply + pb->chan_ofs;
+        pb->chan_ofs += strlen(rslt);
+        if (pb->chan_ofs++ <= pb->chan_end) {
+            return rslt;
+        }
     }
-
+    
     return NULL;
 }
 
@@ -416,19 +428,19 @@ char const *pubnub_get_channel(pubnub_t *pb)
 enum pubnub_res pubnub_subscribe(pubnub_t *p, const char *channel)
 {
     assert(valid_ctx_ptr(p));
-
+    
     if (p->state != PS_IDLE) {
         return PNR_IN_PROGRESS;
     }
     if (p->msg_ofs < p->msg_end) {
-	return PNR_RX_BUFF_NOT_EMPTY;
+        return PNR_RX_BUFF_NOT_EMPTY;
     }
-
+    
     p->initiator = PROCESS_CURRENT();
     p->trans = PBTT_SUBSCRIBE;
     p->http_content_len = 0;
     p->msg_ofs = 0;
-
+    
     p->http_buf_len = snprintf(p->http_buf, sizeof(p->http_buf),
             "/subscribe/%s/%s/0/%s?" "%s%s" "%s%s%s" "&pnsdk=PubNub-Contiki-%s%%2F%s",
             p->subscribe_key, channel, p->timetoken,
@@ -439,7 +451,7 @@ enum pubnub_res pubnub_subscribe(pubnub_t *p, const char *channel)
             );
 
     handle_start_connect(p);
-
+    
     return PNR_STARTED;
 }
 
@@ -447,23 +459,23 @@ enum pubnub_res pubnub_subscribe(pubnub_t *p, const char *channel)
 enum pubnub_res pubnub_leave(pubnub_t *p, const char *channel)
 {
     assert(valid_ctx_ptr(p));
-
+    
     if (p->state != PS_IDLE) {
         return PNR_IN_PROGRESS;
     }
-
+    
     p->initiator = PROCESS_CURRENT();
     p->trans = PBTT_LEAVE;
     p->http_content_len = 0;
-
+    
     /* Make sure next subscribe() will be a join. */
     p->timetoken[0] = '0';
     p->timetoken[1] = '\0';
-
+    
     p->http_buf_len = snprintf(p->http_buf, sizeof(p->http_buf),
             "/v2/presence/sub-key/%s/channel/%s/leave?" "%s%s" "%s%s%s",
-	    p->subscribe_key, 
-	    channel,
+            p->subscribe_key, 
+            channel,
             p->uuid ? "uuid=" : "", p->uuid ? p->uuid : "",
             p->uuid && p->auth ? "&" : "",
             p->auth ? "auth=" : "", p->auth ? p->auth : "");
@@ -476,31 +488,31 @@ enum pubnub_res pubnub_leave(pubnub_t *p, const char *channel)
 static void handle_dns_found(char const* name)
 {
     pubnub_t *pb;
-
+    
     DEBUG_PRINTF("Pubnub: DNS event '%s' - origin: '%s'\n", name, PUBNUB_ORIGIN);
-
+    
     if (0 != strcmp(name, PUBNUB_ORIGIN)) {
-	return;
+        return;
     }
     for (pb = m_aCtx; pb != m_aCtx + PUBNUB_CTX_MAX; ++pb) {
-	if (pb->state == PS_WAIT_DNS) {
-	    handle_start_connect(pb);
-	}
+        if (pb->state == PS_WAIT_DNS) {
+            handle_start_connect(pb);
+        }
     }
 }
 
 
-#define PSOCK_SEND_LITERAL_STR(psock, litstr) { \
-	uint8_t s_[] = litstr;			\
-	PSOCK_SEND((psock), s_, sizeof s_ - 1); }
+#define PSOCK_SEND_LITERAL_STR(psock, litstr) {       \
+        uint8_t s_[] = litstr;                        \
+        PSOCK_SEND((psock), s_, sizeof s_ - 1); }
 
 
 PT_THREAD(handle_transaction(pubnub_t *pb))
 {
     PSOCK_BEGIN(&pb->psock);
-
+    
     pb->http_code = 0;
-
+    
     /* Send HTTP request */
     DEBUG_PRINTF("Pubnub: Sending HTTP request...\n");
     PSOCK_SEND_LITERAL_STR(&pb->psock, "GET ");
@@ -508,16 +520,16 @@ PT_THREAD(handle_transaction(pubnub_t *pb))
     PSOCK_SEND_LITERAL_STR(&pb->psock, " HTTP/1.1\r\nHost: ");
     PSOCK_SEND_STR(&pb->psock, PUBNUB_ORIGIN);
     PSOCK_SEND_LITERAL_STR(&pb->psock, "\r\nUser-Agent: PubNub-ConTiki/0.1\r\nConnection: Keep-Alive\r\n\r\n");
-
+    
     /* Read HTTP response status line */
     DEBUG_PRINTF("Pubnub: Reading HTTP response status line...\n");
     PSOCK_READTO(&pb->psock, '\n');
     if (strncmp(pb->http_buf, "HTTP/1.", 7) != 0) {
-	trans_outcome(pb, PNR_IO_ERROR);
-	PSOCK_CLOSE_EXIT(&pb->psock);
+        trans_outcome(pb, PNR_IO_ERROR);
+        PSOCK_CLOSE_EXIT(&pb->psock);
     }
     pb->http_code = atoi(pb->http_buf + 9);
-
+    
     /* Read response header to find out either the length of the body
        or that body is chunked.
     */
@@ -525,125 +537,131 @@ PT_THREAD(handle_transaction(pubnub_t *pb))
     pb->http_content_len = 0;
     pb->http_chunked = false;
     while (PSOCK_DATALEN(&pb->psock) > 2) {
-	PSOCK_READTO(&pb->psock, '\n');
-	char h_chunked[] = "Transfer-Encoding: chunked";
-	char h_length[] = "Content-Length: ";
-	if (strncmp(pb->http_buf, h_chunked, sizeof h_chunked - 1) == 0) {
-	    pb->http_chunked = true;
-	}
-	else if (strncmp(pb->http_buf, h_length, sizeof h_length - 1) == 0) {
-	    pb->http_content_len = atoi(pb->http_buf + sizeof h_length - 1);
-	    if (pb->http_content_len > PUBNUB_REPLY_MAXLEN) {
-		trans_outcome(pb, PNR_IO_ERROR);
-		PSOCK_CLOSE_EXIT(&pb->psock);
-	    }
-	}
+        PSOCK_READTO(&pb->psock, '\n');
+        char h_chunked[] = "Transfer-Encoding: chunked";
+        char h_length[] = "Content-Length: ";
+        if (strncmp(pb->http_buf, h_chunked, sizeof h_chunked - 1) == 0) {
+            pb->http_chunked = true;
+        }
+        else if (strncmp(pb->http_buf, h_length, sizeof h_length - 1) == 0) {
+            pb->http_content_len = atoi(pb->http_buf + sizeof h_length - 1);
+            if (pb->http_content_len > PUBNUB_REPLY_MAXLEN) {
+                trans_outcome(pb, PNR_IO_ERROR);
+                PSOCK_CLOSE_EXIT(&pb->psock);
+            }
+        }
     }
-
+    
     /* Read the body - either at once, or chunk by chunk */
     DEBUG_PRINTF("Pubnub: Reading HTTP response body...");
     pb->http_buf_len = 0;
     if (pb->http_chunked) {
-	DEBUG_PRINTF("...chunked\n");
-	for (;;) {
-	    PSOCK_READTO(&pb->psock, '\n');
-	    pb->http_content_len = strtoul(pb->http_buf, NULL, 16);
-	    if (pb->http_content_len == 0) {
-		break;
-	    }
-	    if (pb->http_content_len > sizeof pb->http_buf) {
-		trans_outcome(pb, PNR_IO_ERROR);
-		PSOCK_CLOSE_EXIT(&pb->psock);
-	    }
-	    if (pb->http_buf_len + pb->http_content_len > PUBNUB_REPLY_MAXLEN) {
-		trans_outcome(pb, PNR_IO_ERROR);
-		PSOCK_CLOSE_EXIT(&pb->psock);
-	    }
-	    PSOCK_READBUF_LEN(&pb->psock, pb->http_content_len + 2);
-	    memcpy(
-		pb->http_reply + pb->http_buf_len, 
-		pb->http_buf, 
-		pb->http_content_len
-		);
-	    pb->http_buf_len += pb->http_content_len;
-	}
+        DEBUG_PRINTF("...chunked\n");
+        for (;;) {
+            PSOCK_READTO(&pb->psock, '\n');
+            pb->http_content_len = strtoul(pb->http_buf, NULL, 16);
+            if (pb->http_content_len == 0) {
+                break;
+            }
+            if (pb->http_content_len > sizeof pb->http_buf) {
+                trans_outcome(pb, PNR_IO_ERROR);
+                PSOCK_CLOSE_EXIT(&pb->psock);
+            }
+            if (pb->http_buf_len + pb->http_content_len > PUBNUB_REPLY_MAXLEN) {
+                trans_outcome(pb, PNR_IO_ERROR);
+                PSOCK_CLOSE_EXIT(&pb->psock);
+            }
+            PSOCK_READBUF_LEN(&pb->psock, pb->http_content_len + 2);
+            memcpy(
+                pb->http_reply + pb->http_buf_len, 
+                pb->http_buf, 
+                pb->http_content_len
+                );
+            pb->http_buf_len += pb->http_content_len;
+        }
     }
     else {
-	DEBUG_PRINTF("...regular\n");
-	while (pb->http_buf_len < pb->http_content_len) {
-	    PSOCK_READBUF_LEN(&pb->psock, pb->http_content_len - pb->http_buf_len);
-	    memcpy(
-		pb->http_reply + pb->http_buf_len, 
-		pb->http_buf, 
-		PSOCK_DATALEN(&pb->psock)
-		);
-	    pb->http_buf_len += PSOCK_DATALEN(&pb->psock);
-	}
+        DEBUG_PRINTF("...regular\n");
+        while (pb->http_buf_len < pb->http_content_len) {
+            PSOCK_READBUF_LEN(&pb->psock, pb->http_content_len - pb->http_buf_len);
+            memcpy(
+                pb->http_reply + pb->http_buf_len, 
+                pb->http_buf, 
+                PSOCK_DATALEN(&pb->psock)
+                );
+            pb->http_buf_len += PSOCK_DATALEN(&pb->psock);
+        }
     }
     pb->http_reply[pb->http_buf_len] = '\0';
-
+    
     DEBUG_PRINTF("Pubnub: done reading HTTP response\n");
     if (PBTT_SUBSCRIBE == pb->trans) {
-	if (parse_subscribe_response(pb) != 0) {
-	    trans_outcome(pb, PNR_FORMAT_ERROR);
-	    PSOCK_CLOSE_EXIT(&pb->psock);
-	}
+        if (parse_subscribe_response(pb) != 0) {
+            trans_outcome(pb, PNR_FORMAT_ERROR);
+            PSOCK_CLOSE_EXIT(&pb->psock);
+        }
     }
-
+    
     PSOCK_CLOSE(&pb->psock);
     pb->state = PS_WAIT_CLOSE;
-
+    
     PSOCK_END(&pb->psock);
 }
 
 
 static void handle_tcpip(pubnub_t *pb)
 {
-    if (NULL == pb) {
-	assert(0);
-	return;
-    }
     if ((PS_IDLE == pb->state) || (PS_WAIT_DNS == pb->state)) {
-	return;
+        return;
     }
     if (uip_aborted()) {
-	return trans_outcome(pb, PNR_IO_ERROR);
+        trans_outcome(pb, PNR_ABORTED);
+        return;
     }
     else if (uip_timedout()) {
-	return trans_outcome(pb, PNR_TIMEOUT);
+        trans_outcome(pb, PNR_TIMEOUT);
+        return;
     }
     
     switch (pb->state) {
     case PS_CONNECT:
-	if (uip_closed()) {
-	    return trans_outcome(pb, PNR_IO_ERROR);
-	}
-	else if (uip_connected()) {
-	    PSOCK_INIT(&pb->psock, (uint8_t*)pb->http_buf, sizeof pb->http_buf);
-	    pb->state = PS_TRANSACTION;
-	    handle_transaction(pb);
-	}
-	break;
+        if (uip_closed()) {
+            trans_outcome(pb, PNR_IO_ERROR);
+        }
+        else if (uip_connected()) {
+            PSOCK_INIT(&pb->psock, (uint8_t*)pb->http_buf, sizeof pb->http_buf);
+            pb->state = PS_TRANSACTION;
+            handle_transaction(pb);
+        }
+        break;
     case PS_TRANSACTION:
-	if (uip_closed()) {
-	    return trans_outcome(pb, PNR_IO_ERROR);
-	}
-	else {
-	    handle_transaction(pb);
-	}
-	break;
+        if (uip_closed()) {
+            trans_outcome(pb, PNR_IO_ERROR);
+        }
+        else {
+            handle_transaction(pb);
+        }
+        break;
     case PS_WAIT_CLOSE:
-	if (uip_closed()) {
-	    tcp_markconn(uip_conn, NULL);
-	    return trans_outcome(pb, (pb->http_code / 100 == 2) ? PNR_OK : PNR_HTTP_ERROR);
-	}
-	else {
-	    return trans_outcome(pb, PNR_IO_ERROR);
-	}
-	break;
+        if (uip_closed()) {
+            tcp_markconn(uip_conn, NULL);
+            trans_outcome(pb, (pb->http_code / 100 == 2) ? PNR_OK : PNR_HTTP_ERROR);
+        }
+        break;
+    case PS_WAIT_CANCEL:
+        uip_close();
+        pb->state = PS_WAIT_CANCEL_CLOSE;
+        break;
+    case PS_WAIT_CANCEL_CLOSE:
+        if (uip_closed()) {
+            tcp_markconn(uip_conn, NULL);
+            pb->msg_ofs = pb->msg_end = 0;
+            trans_outcome(pb, PNR_CANCELLED);
+        }
+        break;
     default:
-	assert(0);
-	break;
+        assert(0);
+        break;
     }
 }
 
@@ -651,23 +669,27 @@ static void handle_tcpip(pubnub_t *pb)
 PROCESS_THREAD(pubnub_process, ev, data)
 {
     PROCESS_BEGIN();
-
+    
     DEBUG_PRINTF("Pubnub: process started...\n");
     pubnub_publish_event = process_alloc_event();
     pubnub_subscribe_event = process_alloc_event();
     pubnub_leave_event = process_alloc_event();
     
     pubnub_dns_init();
-		
+    
     while (ev != PROCESS_EVENT_EXIT) {
-	PROCESS_WAIT_EVENT();
-
-	if (ev == tcpip_event) {
-	    handle_tcpip(data);
-	}
-	else if (ev == pubnub_dns_event) {
-	    handle_dns_found(data);
-	}
+        PROCESS_WAIT_EVENT();
+        
+        if (ev == tcpip_event) {
+            if (data != NULL) {
+                handle_tcpip(data);
+            }            
+        }
+        else if (ev == pubnub_dns_event) {
+            if (data != NULL) {
+                handle_dns_found(data);
+            }                
+        }
     }
     
     PROCESS_END();

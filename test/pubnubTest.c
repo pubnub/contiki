@@ -1,4 +1,6 @@
-/* -*- c-file-style:"stroustrup" -*- */
+/* -*- c-file-style:"stroustrup"; indent-tabs-mode: nil -*- */
+
+
 #include "../pubnub.h"
 
 #include "contiki-net.h"
@@ -18,18 +20,29 @@
 #include "pubnubTestMedium.h"
 
 
+#if PUBNUB_USE_MDNS
+
+#define pubnub_dns_event mdns_event_found
+
 /* If you need some configuration data, here's the
    place to put it
 */
 static uip_ipaddr_t google_ipv4_dns_server = {
     .u8 = {
-	/* Google's IPv4 DNS in mapped in an IPv6 address (::ffff:8.8.8.8) */
-	0x00, 0x00, 0x00, 0x00,
-	0x00, 0x00, 0x00, 0x00,
-	0x00, 0x00, 0xff, 0xff,
-	0x08, 0x08, 0x08, 0x08,
+        /* Google's IPv4 DNS in mapped in an IPv6 address (::ffff:8.8.8.8) */
+        0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0xff, 0xff,
+        0x08, 0x08, 0x08, 0x08,
     }
 };
+
+#else
+
+#define pubnub_dns_event resolv_event_found
+
+#endif
+
 
 
 const char pubkey[] = "demo";
@@ -47,7 +60,7 @@ struct etimer g_et;
 
 
 /** Helper function to translate Pubnub result to a string */
-static char const* pubnub_res_2_string(enum pubnub_res e)
+char const* pubnub_res_2_string(enum pubnub_res e)
 {
     switch (e) {
     case PNR_OK: return "OK";
@@ -78,34 +91,34 @@ bool got_messages(pubnub_t *p, ...)
 
     va_start(vl, p);
     while (count < 16) {
-	char const *msg = va_arg(vl, char*);
-	if (NULL == msg) {
-	    break;
-	}
-	aMsgs[count++] = msg;
+        char const *msg = va_arg(vl, char*);
+        if (NULL == msg) {
+            break;
+        }
+        aMsgs[count++] = msg;
     }
     va_end(vl);
 
     if ((0 == count) || (count > 16)) {
-	return false;
+        return false;
     }
 
     missing = (0x01 << count) - 1;
     while (missing) {
-	size_t i;
-	char const *msg = pubnub_get(p);
-	if (NULL == msg) {
-	    break;
-	}
-	for (i = 0; i < count; ++i) {
-	    if (strcmp(msg, aMsgs[i]) == 0) {
-		missing &= ~(0x01 << i);
-		break;
-	    }
-	}
+        size_t i;
+        char const *msg = pubnub_get(p);
+        if (NULL == msg) {
+            break;
+        }
+        for (i = 0; i < count; ++i) {
+            if (strcmp(msg, aMsgs[i]) == 0) {
+                missing &= ~(0x01 << i);
+                break;
+            }
+        }
     }
 
-    return missing;
+    return !missing;
 }
 
 
@@ -116,17 +129,17 @@ struct TestData {
     struct pt *pPT;
 };
 
-#define DECL_TEST(tstname) { tstname, &pt_##tstname }
+#define LIST_TEST(tstname) { test_##tstname, &pt_test_##tstname }
 
 static struct TestData m_aTest[] = {
-    DECL_TEST(test_basic_1),
-    DECL_TEST(test_basic_2),
-    DECL_TEST(test_medium_1),
-    DECL_TEST(test_medium_2),
-    DECL_TEST(test_medium_3),
-    DECL_TEST(test_medium_4),
-    DECL_TEST(test_medium_wrong_api),
-    DECL_TEST(test_medium_cloud_err)
+    LIST_TEST(basic_conn_pub),
+    LIST_TEST(basic_conn_rx),
+    LIST_TEST(medium_conn_pub),
+    LIST_TEST(medium_conn_rx),
+    LIST_TEST(medium_complex_rx_tx),
+    LIST_TEST(medium_conn_disc_conn_again),
+    LIST_TEST(medium_wrong_api),
+    LIST_TEST(medium_cloud_err)
 };
 
 #define TEST_COUNT (sizeof m_aTest / sizeof m_aTest[0])
@@ -145,36 +158,56 @@ PROCESS_THREAD(pubnub_test, ev, data)
 
     leds_init();
 
-    /* A little wait to start */
+    /* A little wait to start. If using DHCP, this waits for it to
+       finish - unfortunately, IP64 DHCPv4 does not send an event
+       when done, so we have to guess how much time it's gonna take.
+    */
     PT_INIT(m_aTest[0].pPT);
-    etimer_set(&g_et, 5*CLOCK_SECOND);
-    printf("Starting automatic tests\n");
-    
+    etimer_set(&g_et, 10*CLOCK_SECOND);
+    printf("\n\n\x1b[34m Starting automatic tests in 10s\x1b[m\n");
+
     while (1) {
 	enum TestResult test_result;
 
 	PROCESS_WAIT_EVENT();
 
+	if (ev == pubnub_dns_event) {
+	    continue;
+	}
+        if ((0 == m_aTest[s_iTest].pPT->lc) && (ev = PROCESS_EVENT_TIMER)) {
+	    printf("\x1b[34m Starting %d. test of %ld\x1b[m\n", s_iTest + 1, TEST_COUNT);
+        }
 	leds_on(LEDS_ALL);
 	if (0 == PT_SCHEDULE(m_aTest[s_iTest].pf(ev, data, &test_result))) {
-	    if (trFail == test_result) {
+            switch (test_result) {
+	    case trFail:
 		/** Test failed */
-		printf("Test %d failed\n", s_iTest);
+		printf("\n\x1b[41m !!!!!!! The %d test failed!\x1b[m\n\n", s_iTest + 1);
 		for (;;) {
-		    leds_blink();
+		    int i;
+		    leds_on(LEDS_ALL);
+		    for (i = 0; i < 16000; ++i) {
+			continue;
+		    }
+		    leds_off(LEDS_ALL);
 		}
-	    }
-	    else {
+		break;
+	    case trPass:
 		if (++s_iTest >= TEST_COUNT) {
 		    /** All tests passed */
-		    printf("All tests passed\n");
+		    printf("\x1b[32m All tests passed\x1b[m\n");
 		    for (;;) {
 			leds_off(LEDS_ALL);
 		    }
 		}
-		printf("Starting test %d\n", s_iTest);
 		PT_INIT(m_aTest[s_iTest].pPT);
-	    }
+                etimer_set(&g_et, CLOCK_SECOND/2);
+		break;
+            case trIndeterminate:
+                etimer_set(&g_et, 2*CLOCK_SECOND);
+		printf("\x1b[33m ReStarting %d. test of %ld\x1b[m\t", s_iTest + 1, TEST_COUNT);
+                break;
+            }
 	}
     }
 

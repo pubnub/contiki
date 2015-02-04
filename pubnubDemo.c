@@ -8,9 +8,9 @@
 #include <string.h>
 
 #if PUBNUB_USE_MDNS
+
 #include "ip64.h"
 #include "mdns.h"
-#endif
 
 
 /* If you need some configuration data, here's the
@@ -25,6 +25,9 @@ static uip_ipaddr_t google_ipv4_dns_server = {
 	0x08, 0x08, 0x08, 0x08,
     }
 };
+
+#endif
+
 
 
 static const char pubkey[] = "demo";

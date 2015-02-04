@@ -1,4 +1,4 @@
-/* -*- c-file-style:"stroustrup" -*- */
+/* -*- c-file-style:"stroustrup"; indent-tabs-mode: nil -*- */
 #ifndef PUBNUB_H
 #define	PUBNUB_H
 
@@ -90,9 +90,9 @@
 
 #if !defined PUBNUB_USE_MDNS
 /** If `1`, the MDNS module will be used to handle the DNS
-	resolving. If `0` the "resolv" module will be used.
-	This is a temporary solution, it is expected that ConTiki
-	will unify those two modules.
+        resolving. If `0` the "resolv" module will be used.
+        This is a temporary solution, it is expected that ConTiki
+        will unify those two modules.
 */
 #define PUBNUB_USE_MDNS 1
 #endif
@@ -113,6 +113,8 @@ enum pubnub_res {
     PNR_OK,
     /** Time out before the request has completed. */
     PNR_TIMEOUT,
+    /** Connection to Pubnub aborted (reset) */
+    PNR_ABORTED,
     /** Communication error (network or HTTP response format). */
     PNR_IO_ERROR,
     /** HTTP error. */
@@ -126,7 +128,7 @@ enum pubnub_res {
     /** Transaction (already) ongoing. Can't start a new transaction. */
     PNR_IN_PROGRESS,
     /** Receive buffer (from previous transaction) not read, new
-	subscription not allowed.
+        subscription not allowed.
     */
     PNR_RX_BUFF_NOT_EMPTY,
     /** The buffer is to small. Increase #PUBNUB_BUF_MAXLEN.
@@ -330,4 +332,4 @@ int pubnub_last_http_code(pubnub_t const *p);
 PROCESS_NAME(pubnub_process);
 
 
-#endif	/* PUBNUB_H */
+#endif        /* PUBNUB_H */
