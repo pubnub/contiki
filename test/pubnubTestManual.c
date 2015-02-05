@@ -3,20 +3,20 @@
 
 #include "../pubnub.h"
 
-#include "pubnubTestBasic.h"
-#include "pubnubTestMedium.h"
+#include "pubnubTest.h"
 
 #include "contiki-net.h"
 #include "dev/leds.h"
+#include "dev/serial-line.h"
+
+#include <stdio.h>
+#include <stdbool.h>
+#include <stdarg.h>
 
 #if PUBNUB_USE_MDNS
 #include "ip64.h"
 #include "mdns.h"
 #endif
-
-#include <stdio.h>
-#include <stdbool.h>
-
 
 
 #if PUBNUB_USE_MDNS
@@ -57,13 +57,7 @@ struct pubnub *g_pb;
 struct pubnub *g_pb_2;
 struct etimer g_et;
 
-
-
-
-
 struct pt *g_current_pt;
-
-
 
 
 typedef char (*PF_Test_T)(process_event_t ev, process_data_t data, enum TestResult *pResult);
@@ -75,15 +69,91 @@ struct TestData {
 
 #define LIST_TEST(tstname) { test_##tstname, &pt_test_##tstname }
 
+/* So far, we have only one manual test, so we're putting it here,
+   instead of a separatee module.
+*/
+
+
+TEST_DEF(basic_broken_conn)
+{
+    g_pb = pubnub_get_ctx(0);
+    pubnub_init(g_pb, pubkey, subkey);
+
+    etimer_set(&g_et, 6*CLOCK_SECOND);
+    pubnub_subscribe(g_pb, channel);
+
+    yield_expect_ev(pubnub_subscribe_event);
+    expect_last_result(g_pb, PNR_OK);
+
+    pubnub_publish(g_pb, channel, "\"Test 3\"");
+    etimer_restart(&g_et);
+
+    yield_expect_ev(pubnub_publish_event);
+    expect_last_result(g_pb, PNR_OK);
+
+    pubnub_subscribe(g_pb, channel);
+    etimer_restart(&g_et);
+
+    yield_expect_ev(pubnub_subscribe_event);
+    expect_last_result(g_pb, PNR_OK);
+    expect(got_messages(g_pb, "\"Test 3\"", NULL));
+
+    pubnub_publish(g_pb, channel, "\"Test 3 - 2\"");
+    etimer_restart(&g_et);
+
+    yield_expect_ev(pubnub_publish_event);
+    expect_last_result(g_pb, PNR_OK);
+
+    printf("Please disconnect from Internet. Press Enter when done.");
+    yield_expect_ev(serial_line_event_message);
+
+    pubnub_subscribe(g_pb, channel);
+    etimer_restart(&g_et);
+
+    yield_expect_ev(pubnub_subscribe_event);
+    expect_last_result(g_pb, PNR_TIMEOUT);
+
+    printf("Please reconnect to Internet. Press Enter when done.");
+    yield_expect_ev(serial_line_event_message);
+
+    pubnub_subscribe(g_pb, channel);
+    etimer_restart(&g_et);
+
+    yield_expect_ev(pubnub_subscribe_event);
+    expect_last_result(g_pb, PNR_OK);
+    expect(got_messages(g_pb, "\"Test 3 - 2\"", NULL));
+
+    printf("Please disconnect from Internet. Press Enter when done.");
+    yield_expect_ev(serial_line_event_message);
+
+    pubnub_publish(g_pb, channel, "\"Test 3 - 3\"");
+    etimer_restart(&g_et);
+
+    yield_expect_ev(pubnub_publish_event);
+    expect_last_result(g_pb, PNR_TIMEOUT);
+    
+    printf("Please reconnect to Internet. Press Enter when done.");
+    yield_expect_ev(serial_line_event_message);
+
+    pubnub_publish(g_pb, channel, "\"Test 3 - 4\"");
+    etimer_restart(&g_et);
+
+    yield_expect_ev(pubnub_publish_event);
+    expect_last_result(g_pb, PNR_OK);
+
+    pubnub_subscribe(g_pb, channel);
+    etimer_restart(&g_et);
+
+    yield_expect_ev(pubnub_subscribe_event);
+    expect_last_result(g_pb, PNR_OK);
+    expect(got_messages(g_pb, "\"Test 3 - 4\"", NULL));
+}
+TEST_ENDDEF
+
+
+
 static struct TestData m_aTest[] = {
-    LIST_TEST(basic_conn_pub),
-    LIST_TEST(basic_conn_rx),
-    LIST_TEST(medium_conn_pub),
-    LIST_TEST(medium_conn_rx),
-    LIST_TEST(medium_complex_rx_tx),
-    LIST_TEST(medium_conn_disc_conn_again),
-    LIST_TEST(medium_wrong_api),
-    LIST_TEST(medium_cloud_err)
+    LIST_TEST(basic_broken_conn)
 };
 
 #define TEST_COUNT (sizeof m_aTest / sizeof m_aTest[0])

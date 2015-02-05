@@ -1,5 +1,5 @@
-PROJECT_SOURCEFILES += ../pubnub.c pubnubTestCommon.c pubnubTestBasic.c pubnubTestMedium.c
-CONTIKI_PROJECT = pubnubTest
+PROJECT_SOURCEFILES += ../pubnub.c pubnubTestCommon.c
+CONTIKI_PROJECT = pubnubTestManual
 all: $(CONTIKI_PROJECT)
 
 #UIP_CONF_IPV6=1
