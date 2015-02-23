@@ -1,9 +1,9 @@
 # Pubnub client library for Contiki OS
 
 Pubnub library for Contiki OS is designed for embedded/constrained
-devices. It consists of just two files - the header, which has the
-interface of the library, and the implementation (.c) file. Header
-is fully documented in Doxygen compatible comments.
+devices. It consists of just two source files (and their header
+files). The public (user) interface (API) of the library is
+fully documented in Doxygen compatible comments.
 
 There are no special requirements of the library, and it should be
 usable as-is on any platform that Contiki is ported to.
@@ -18,12 +18,15 @@ and brought down to minimum.
 
 The files of the library repository are:
 
-- `pubnub.h` : the interface of the library, #include this in your code,
-  and search the comments for documentation. You can also generate
-  Doxygen documentation from it.
+- `pubnub.h` : the public interface of the library, #include this in
+  your code, and search the comments for documentation. You can also
+  generate Doxygen documentation from it.
 
 - `pubnub.c` : the implementation of the library, compile &link this
   with your code
+
+- `pubnub_ccore.c` and `pubnub_ccore.h` : internal module. Compile
+  and linke the `.c` with your code and "forget" about the `.h`.
 
 - `pubnubDemo.c` : A simple demo of how the library should be used.
   Build this (with pubnub.c and Contiki) for a basic example of how
