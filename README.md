@@ -25,8 +25,9 @@ The files of the library repository are:
 - `pubnub.c` : the implementation of the library, compile &link this
   with your code
 
-- `pubnub_ccore.c` and `pubnub_ccore.h` : internal module. Compile
-  and linke the `.c` with your code and "forget" about the `.h`.
+- `pubnub_ccore.c` and `pubnub_ccore.h` : internal module. Compile and
+  link the source (`.c`) with your code and "forget" about the header
+  (`.h`).
 
 - `pubnubDemo.c` : A simple demo of how the library should be used.
   Build this (with pubnub.c and Contiki) for a basic example of how
